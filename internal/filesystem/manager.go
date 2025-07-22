@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"dendrite/internal/config"
+	"dendrite/internal/utils"
 )
 
 // Manager handles filesystem operations
@@ -187,8 +188,10 @@ func (m *Manager) UploadFile(targetPath, filename string, file io.Reader, size i
 		}
 		
 		if currentUsed+size > m.Config.QuotaBytes {
-			return nil, fmt.Errorf("upload would exceed quota limit (current: %d, file: %d, limit: %d)", 
-				currentUsed, size, m.Config.QuotaBytes)
+			return nil, fmt.Errorf("upload would exceed quota limit (current: %s, file: %s, limit: %s)", 
+				utils.FormatFileSize(currentUsed), 
+				utils.FormatFileSize(size), 
+				utils.FormatFileSize(m.Config.QuotaBytes))
 		}
 	}
 
@@ -297,7 +300,10 @@ func (m *Manager) CopyFile(sourcePath, destPath string) error {
 		}
 		
 		if currentUsed+copySize > m.Config.QuotaBytes {
-			return fmt.Errorf("copy would exceed quota limit")
+			return fmt.Errorf("copy would exceed quota limit (current: %s, copy size: %s, limit: %s)",
+				utils.FormatFileSize(currentUsed),
+				utils.FormatFileSize(copySize),
+				utils.FormatFileSize(m.Config.QuotaBytes))
 		}
 	}
 
