@@ -68,13 +68,10 @@ jobs:
       with:
         go-version-file: 'go.mod'
     
-    - name: Install golangci-lint
-      uses: golangci/golangci-lint-action@v3
+    - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v6
       with:
         version: latest
-    
-    - name: Run golangci-lint
-      run: golangci-lint run
   
   test-matrix:
     name: Test on ${{ matrix.os }}

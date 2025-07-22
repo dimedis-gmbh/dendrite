@@ -342,8 +342,7 @@ func (m *Manager) StatFile(path string) (*FileStatInfo, error) {
 		stat.UID = sysstat.Uid
 		stat.Gid = sysstat.Gid
 		stat.Nlink = uint64(sysstat.Nlink)
-		stat.AccessTime = time.Unix(sysstat.Atimespec.Sec, sysstat.Atimespec.Nsec)
-		stat.ChangeTime = time.Unix(sysstat.Ctimespec.Sec, sysstat.Ctimespec.Nsec)
+		stat.AccessTime, stat.ChangeTime = getStatTimes(sysstat)
 	}
 
 	if !info.IsDir() {
