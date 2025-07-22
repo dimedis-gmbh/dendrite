@@ -137,6 +137,7 @@ class UI {
             this.renderFileList(files);
             this.updatePathDisplay();
             this.updateToolbar();
+            this.updateSortIndicators();
             
             // Update browser URL and history
             if (updateHistory) {
@@ -162,6 +163,8 @@ class UI {
             row.className = 'file-row';
             row.dataset.path = file.path;
             row.dataset.isDir = file.isDir;
+            row.dataset.size = file.size || 0;
+            row.dataset.modTime = file.modTime || '';
             
             row.innerHTML = `
                 <td class="col-select">
@@ -232,17 +235,33 @@ class UI {
             this.sortDirection = 'asc';
         }
         
+        // Update column headers to show sort direction
+        this.updateSortIndicators();
+        
         // Reload current files with new sort
         const currentFiles = Array.from(document.querySelectorAll('.file-row')).map(row => ({
             name: row.querySelector('.col-name').textContent,
             path: row.dataset.path,
             isDir: row.dataset.isDir === 'true',
-            size: row.querySelector('.col-size').textContent === '' ? 0 : -1, // Simplified
-            modTime: row.querySelector('.col-modified').title
+            size: parseInt(row.dataset.size || '0', 10),
+            modTime: row.dataset.modTime
         }));
         
         if (currentFiles.length > 0) {
             this.renderFileList(currentFiles);
+        }
+    }
+    
+    updateSortIndicators() {
+        // Remove existing sort indicators
+        document.querySelectorAll('#file-list th[data-sort]').forEach(th => {
+            th.classList.remove('sort-asc', 'sort-desc');
+        });
+        
+        // Add sort indicator to current column
+        const currentTh = document.querySelector(`#file-list th[data-sort="${this.sortColumn}"]`);
+        if (currentTh) {
+            currentTh.classList.add(this.sortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
         }
     }
     

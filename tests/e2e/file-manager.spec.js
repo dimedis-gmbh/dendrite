@@ -857,6 +857,113 @@ test.describe('Dendrite File Manager', () => {
     await expect(page.locator('#path-display')).toContainText('config');
   });
 
+  test('should sort columns correctly without losing data', async ({ page }) => {
+    // Get initial file data
+    await page.waitForSelector('.file-row');
+    
+    // Store initial file data before sorting
+    const getFileData = async () => {
+      return await page.evaluate(() => {
+        const rows = Array.from(document.querySelectorAll('.file-row'));
+        return rows.map(row => ({
+          name: row.querySelector('.col-name').textContent.trim(),
+          size: row.querySelector('.col-size').textContent.trim(),
+          type: row.querySelector('.col-type').textContent.trim(),
+          modified: row.querySelector('.col-modified').textContent.trim(),
+          dataSize: row.dataset.size,
+          dataModTime: row.dataset.modTime
+        }));
+      });
+    };
+    
+    const initialData = await getFileData();
+    
+    // Test 1: Click on Size column header
+    await page.click('th[data-sort="size"]');
+    await page.waitForTimeout(100); // Wait for sort to complete
+    
+    // Check sort indicator is visible
+    await expect(page.locator('th[data-sort="size"]')).toHaveClass(/sort-asc|sort-desc/);
+    
+    // Verify data integrity after size sort
+    const afterSizeSort = await getFileData();
+    for (const file of afterSizeSort) {
+      // Ensure size is not showing as zero (unless it's actually zero)
+      if (file.dataSize !== '0' && file.size !== '') {
+        expect(file.size).not.toBe('0');
+        expect(file.size).not.toBe('0 B');
+      }
+      
+      // Ensure date is not "Invalid Date"
+      expect(file.modified).not.toContain('Invalid Date');
+    }
+    
+    // Test 2: Click on Modified column header
+    await page.click('th[data-sort="modified"]');
+    await page.waitForTimeout(100);
+    
+    // Check sort indicator changed
+    await expect(page.locator('th[data-sort="modified"]')).toHaveClass(/sort-asc|sort-desc/);
+    
+    // Verify data integrity after date sort
+    const afterDateSort = await getFileData();
+    for (const file of afterDateSort) {
+      // Ensure size is not showing as zero (unless it's actually zero)
+      if (file.dataSize !== '0' && file.size !== '') {
+        expect(file.size).not.toBe('0');
+        expect(file.size).not.toBe('0 B');
+      }
+      
+      // Ensure date is not "Invalid Date"
+      expect(file.modified).not.toContain('Invalid Date');
+    }
+    
+    // Test 3: Click same column again to reverse sort
+    await page.click('th[data-sort="modified"]');
+    await page.waitForTimeout(100);
+    
+    // Should have opposite sort class
+    const modTimeHeader = page.locator('th[data-sort="modified"]');
+    const classes = await modTimeHeader.getAttribute('class');
+    if (classes.includes('sort-asc')) {
+      // After clicking again, should be desc
+      await page.click('th[data-sort="modified"]');
+      await expect(modTimeHeader).toHaveClass(/sort-desc/);
+    }
+    
+    // Test 4: Verify Name column sorting preserves data
+    await page.click('th[data-sort="name"]');
+    await page.waitForTimeout(100);
+    
+    const afterNameSort = await getFileData();
+    
+    // Check that we have the name sort indicator
+    await expect(page.locator('th[data-sort="name"]')).toHaveClass(/sort-asc|sort-desc/);
+    
+    // Most importantly, verify data is still intact after name sort
+    let nonZeroSizeCount = 0;
+    let validDateCount = 0;
+    
+    for (const file of afterNameSort) {
+      // Count files with non-zero sizes
+      if (file.dataSize && file.dataSize !== '0' && file.size !== '') {
+        expect(file.size).not.toBe('0');
+        expect(file.size).not.toBe('0 B');
+        nonZeroSizeCount++;
+      }
+      
+      // All files should have valid dates
+      expect(file.modified).not.toContain('Invalid Date');
+      if (file.modified && file.modified !== '') {
+        validDateCount++;
+      }
+    }
+    
+    // Ensure we found at least some files with sizes and dates
+    expect(nonZeroSizeCount).toBeGreaterThan(0);
+    expect(validDateCount).toBeGreaterThan(0);
+  });
+
   test('should copy and paste file between folders without errors', async ({ page }) => {
     // Monitor console for errors
     const consoleErrors = [];

@@ -129,12 +129,42 @@ body {
     padding: 4px 8px;
     text-align: left;
     font-weight: normal;
-    cursor: pointer;
+    cursor: default;
     user-select: none;
 }
 
-#file-list th:hover {
-    background: linear-gradient(to bottom, #e8e8ff, #d8d8ff);
+#file-list th[data-sort] {
+    cursor: pointer;
+    position: relative;
+    padding-right: 20px;
+}
+
+#file-list th[data-sort]:hover {
+    background: linear-gradient(to bottom, #e8e8e8, #d8d8d8);
+}
+
+#file-list th[data-sort]::after {
+    content: '';
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-style: solid;
+    opacity: 0.3;
+}
+
+#file-list th.sort-asc::after {
+    border-width: 0 4px 6px 4px;
+    border-color: transparent transparent #333 transparent;
+    opacity: 1;
+}
+
+#file-list th.sort-desc::after {
+    border-width: 6px 4px 0 4px;
+    border-color: #333 transparent transparent transparent;
+    opacity: 1;
 }
 
 #file-list td {
