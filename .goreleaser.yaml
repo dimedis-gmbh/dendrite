@@ -1,0 +1,95 @@
+version: 2
+
+project_name: dendrite
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+      - goos: linux
+        goarch: arm64
+    id: dendrite
+    binary: dendrite
+    main: ./main.go
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: dendrite
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- if eq .Os "darwin" }}macOS{{ else }}{{ title .Os }}{{ end }}_
+      {{- if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+release:
+  github:
+    owner: dimedis-gmbh
+    name: dendrite
+  draft: false
+  prerelease: auto
+  name_template: "Dendrite {{.Tag}}"
+  header: |
+    ## 🎉 Dendrite {{.Tag}}
+    
+    This release was automatically built and published by GoReleaser.
+  footer: |
+    ## 📦 Installation
+
+    Download the appropriate binary for your platform and run:
+
+    ```bash
+    ./dendrite --listen 127.0.0.1:3000 --dir /path/to/serve --quota 10GB
+    ```
+
+    🤖 Generated with [Claude Code](https://claude.ai/code)
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - '^chore:'
+  groups:
+    - title: "✨ Features"
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: "🐛 Bug Fixes"
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: "⚡ Performance"
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: "📝 Documentation"
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: "🔧 Other"
+      order: 999
