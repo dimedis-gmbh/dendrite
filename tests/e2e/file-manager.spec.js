@@ -964,6 +964,57 @@ test.describe('Dendrite File Manager', () => {
     expect(validDateCount).toBeGreaterThan(0);
   });
 
+  test('should display human-readable quota error messages', async ({ page, context }) => {
+    // This test simulates a quota exceeded scenario
+    // Since we can't easily control the server quota in E2E tests,
+    // we'll test that error messages are displayed properly
+    
+    // Create a mock file upload that will fail
+    await page.click('#btn-upload');
+    await expect(page.locator('#upload-modal')).toBeVisible();
+    
+    // Intercept the upload request to simulate quota error
+    await page.route('/api/files', route => {
+      if (route.request().method() === 'POST') {
+        route.fulfill({
+          status: 500,
+          body: 'upload would exceed quota limit (current: 20.17 MB, file: 31.50 KB, limit: 1.00 MB)'
+        });
+      } else {
+        route.continue();
+      }
+    });
+    
+    // Trigger file upload
+    const fileInput = page.locator('#file-input');
+    await fileInput.setInputFiles({
+      name: 'test-file.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('test content')
+    });
+    
+    // Check that the error message is displayed with human-readable sizes
+    await page.waitForTimeout(500);
+    const errorText = await page.evaluate(() => {
+      // Find the last alert/error message shown
+      const alerts = Array.from(document.querySelectorAll('.alert-danger, [role="alert"]'));
+      if (alerts.length > 0) {
+        return alerts[alerts.length - 1].textContent;
+      }
+      // Check if showError was called (it might show in different ways)
+      return document.body.textContent;
+    });
+    
+    // Verify the error contains human-readable file sizes
+    expect(errorText).toContain('20.17 MB');
+    expect(errorText).toContain('31.50 KB');
+    expect(errorText).toContain('1.00 MB');
+    
+    // Close modal
+    await page.click('#upload-modal .close');
+    await expect(page.locator('#upload-modal')).toBeHidden();
+  });
+
   test('should copy and paste file between folders without errors', async ({ page }) => {
     // Monitor console for errors
     const consoleErrors = [];
