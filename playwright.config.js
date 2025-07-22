@@ -47,7 +47,7 @@ module.exports = defineConfig({
   webServer: {
     command: './dendrite --listen 127.0.0.1:3001 --dir . --quota 100MB',
     url: 'http://127.0.0.1:3001',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: true,
     timeout: 120 * 1000,
   },
 });

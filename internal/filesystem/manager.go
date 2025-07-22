@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"dendrite/internal/config"
@@ -338,12 +337,7 @@ func (m *Manager) StatFile(path string) (*FileStatInfo, error) {
 	}
 
 	// Get system-specific stat info
-	if sysstat, ok := info.Sys().(*syscall.Stat_t); ok {
-		stat.UID = sysstat.Uid
-		stat.Gid = sysstat.Gid
-		stat.Nlink = uint64(sysstat.Nlink)
-		stat.AccessTime, stat.ChangeTime = getStatTimes(sysstat)
-	}
+	getSysStatInfo(info, stat)
 
 	if !info.IsDir() {
 		stat.MimeType = m.getMimeType(info.Name())

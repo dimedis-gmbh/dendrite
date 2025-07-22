@@ -1,4 +1,4 @@
-version: 2
+# golangci-lint configuration
 
 run:
   # timeout for analysis, e.g. 30s, 5m, default is 1m
@@ -12,17 +12,11 @@ run:
 
 output:
   formats:
-    colored-line-number:
-      path: stdout
+    - format: colored-line-number
   print-issued-lines: true
   print-linter-name: true
-  uniq-by-line: false
   path-prefix: ""
   sort-results: true
-  sort-order:
-    - linter
-    - severity
-    - file
   show-stats: true
 
 linters:

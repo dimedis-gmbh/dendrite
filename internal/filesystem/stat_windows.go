@@ -3,15 +3,18 @@
 package filesystem
 
 import (
-	"syscall"
+	"os"
 	"time"
 )
 
-// getStatTimes extracts platform-specific timestamps from syscall.Stat_t
-func getStatTimes(stat *syscall.Stat_t) (atime, ctime time.Time) {
-	// Windows uses different field names and types
-	// For Windows, we'll return the current time as a fallback
-	// In production, you might want to use Windows-specific APIs
-	now := time.Now()
-	return now, now
+// getSysStatInfo extracts platform-specific stat information
+func getSysStatInfo(info os.FileInfo, stat *FileStatInfo) {
+	// Windows doesn't have syscall.Stat_t in the same way as Unix systems
+	// We'll set default values for Windows
+	stat.UID = 0
+	stat.Gid = 0
+	stat.Nlink = 1
+	// Use modification time as a fallback for access and change times
+	stat.AccessTime = info.ModTime()
+	stat.ChangeTime = info.ModTime()
 }
