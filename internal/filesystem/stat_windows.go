@@ -4,7 +4,6 @@ package filesystem
 
 import (
 	"os"
-	"time"
 )
 
 // getSysStatInfo extracts platform-specific stat information
