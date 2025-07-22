@@ -1,0 +1,60 @@
+version: 2
+
+run:
+  # timeout for analysis, e.g. 30s, 5m, default is 1m
+  timeout: 2m
+
+  # exit code when at least one issue was found, default is 1
+  issues-exit-code: 1
+
+  # include test files or not, default is true
+  tests: true
+
+output:
+  formats:
+    colored-line-number:
+      path: stdout
+  print-issued-lines: true
+  print-linter-name: true
+  uniq-by-line: false
+  path-prefix: ""
+  sort-results: true
+  sort-order:
+    - linter
+    - severity
+    - file
+  show-stats: true
+
+linters:
+  enable:
+    - govet
+    - revive
+    - staticcheck
+    - errcheck
+    - unused
+    - gosec
+    - gocyclo
+    - misspell
+    - unparam
+    - ineffassign
+    - unconvert
+    - whitespace
+    - lll
+    - nakedret
+    - bodyclose
+    - errchkjson
+    - errorlint
+    - thelper
+  enable-all: false
+  disable: []
+  disable-all: true
+  presets: []
+  fast: false
+
+issues:
+  exclude:
+    # govet
+    - "shadow: declaration of .err. shadows declaration"
+    # staticcheck
+    - "SA1019" # x is deprecated
+

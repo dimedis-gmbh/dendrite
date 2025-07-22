@@ -1,0 +1,53 @@
+# Binaries
+dendrite
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.*
+
+# Go workspace file
+go.work
+
+# Dependency directories
+vendor/
+
+# Node modules
+node_modules/
+
+# Playwright test results
+test-results/
+playwright-report/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Local environment
+.env
+.env.local
+
+# Build artifacts
+dist/
+build/
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Claude Code
+.claude/
