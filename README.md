@@ -5,6 +5,8 @@
 
 Dendrite is a web-based file manager written in Go that allows managing remote file systems from a browser. It provides a Windows Explorer-like interface with comprehensive file management capabilities.
 
+![Dendrite File Manager UI](docs/screenshot.png)
+
 ## Features
 
 - 🗂️ **Windows Explorer-like Interface**: Familiar UI with file browsing, selection, and navigation
