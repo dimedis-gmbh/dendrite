@@ -28,8 +28,9 @@ func main() {
 		log.Fatalf("Error resolving directory path: %v", err)
 	}
 
-	if _, err := os.Stat(absDir); os.IsNotExist(err) {
-		log.Fatalf("Directory does not exist: %s", absDir)
+	// Check if directory exists
+	if _, err := os.Stat(absDir); err != nil {
+		log.Fatalf("Directory does not exist or cannot be accessed: %s", absDir)
 	}
 
 	cfg.Dir = absDir
@@ -48,7 +49,7 @@ func main() {
 	}
 
 	srv := server.New(&cfg)
-	
+
 	// Create HTTP server with timeouts
 	httpServer := &http.Server{
 		Addr:         cfg.Listen,
@@ -57,6 +58,6 @@ func main() {
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
-	
+
 	log.Fatal(httpServer.ListenAndServe())
 }

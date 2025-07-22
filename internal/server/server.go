@@ -4,12 +4,14 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
 
 	"github.com/gorilla/mux"
 
+	"dendrite/internal/assets"
 	"dendrite/internal/config"
 	"dendrite/internal/filesystem"
 )
@@ -19,14 +21,21 @@ type Server struct {
 	Config *config.Config
 	FS     *filesystem.Manager
 	Router *mux.Router
+	webFS  fs.FS
 }
 
 // New creates a new server instance
 func New(cfg *config.Config) *Server {
+	webFS, err := assets.WebFS()
+	if err != nil {
+		panic("Failed to load embedded web assets: " + err.Error())
+	}
+
 	s := &Server{
 		Config: cfg,
 		FS:     filesystem.New(cfg),
 		Router: mux.NewRouter(),
+		webFS:  webFS,
 	}
 
 	s.setupRoutes()
@@ -48,17 +57,29 @@ func (s *Server) setupRoutes() {
 	api.HandleFunc("/quota", s.getQuotaInfo).Methods("GET")
 
 	// Static files (frontend)
-	// Serve static assets directly
-	s.Router.PathPrefix("/css/").Handler(http.StripPrefix("/", http.FileServer(http.Dir("./web/"))))
-	s.Router.PathPrefix("/js/").Handler(http.StripPrefix("/", http.FileServer(http.Dir("./web/"))))
-	s.Router.PathPrefix("/img/").Handler(http.StripPrefix("/", http.FileServer(http.Dir("./web/"))))
+	// Serve static assets from embedded filesystem
+	fileServer := http.FileServer(http.FS(s.webFS))
+	s.Router.PathPrefix("/css/").Handler(fileServer)
+	s.Router.PathPrefix("/js/").Handler(fileServer)
+	s.Router.PathPrefix("/img/").Handler(fileServer)
+	s.Router.PathPrefix("/images/").Handler(fileServer)
 	
 	// For all other routes, serve index.html to support client-side routing
 	s.Router.PathPrefix("/").HandlerFunc(s.serveIndex)
 }
 
-func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "./web/index.html")
+func (s *Server) serveIndex(w http.ResponseWriter, _ *http.Request) {
+	// Serve index.html from embedded filesystem
+	indexContent, err := fs.ReadFile(s.webFS, "index.html")
+	if err != nil {
+		http.Error(w, "Failed to load index.html", http.StatusInternalServerError)
+		return
+	}
+	
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if _, err := w.Write(indexContent); err != nil {
+		http.Error(w, "Failed to write response", http.StatusInternalServerError)
+	}
 }
 
 func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {

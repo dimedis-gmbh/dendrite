@@ -1,4 +1,7 @@
 # golangci-lint configuration
+# This file configures golangci-lint v2.x
+
+version: "2"
 
 run:
   # timeout for analysis, e.g. 30s, 5m, default is 1m
@@ -11,8 +14,7 @@ run:
   tests: true
 
 output:
-  formats:
-    - format: colored-line-number
+  format: colored-line-number
   print-issued-lines: true
   print-linter-name: true
   path-prefix: ""
@@ -45,10 +47,12 @@ linters:
   presets: []
   fast: false
 
+linters-settings:
+  staticcheck:
+    checks: ["all"]
+
 issues:
   exclude:
     # govet
     - "shadow: declaration of .err. shadows declaration"
-    # staticcheck
-    - "SA1019" # x is deprecated
 
