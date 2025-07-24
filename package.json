@@ -8,7 +8,7 @@
     "test:debug": "playwright test --debug",
     "test:ui": "playwright test --ui",
     "test:ci": "node tests/e2e/check-port.js && playwright test",
-    "pretest": "node -e \"try { require('child_process').execSync('pkill -f dendrite.*3001 2>/dev/null || killall -q dendrite 2>/dev/null || taskkill /F /IM dendrite.exe 2>NUL', {stdio: 'ignore'}); } catch(e) {}\"",
+    "pretest": "node tests/e2e/cleanup-processes.js",
     "test:local": "npm run pretest && npm test"
   },
   "devDependencies": {

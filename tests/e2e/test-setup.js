@@ -137,18 +137,60 @@ async function teardownTestEnvironment() {
   // Kill dendrite process
   if (dendriteProcess) {
     console.log('Stopping dendrite server...');
-    dendriteProcess.kill('SIGTERM');
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    if (!dendriteProcess.killed) {
-      dendriteProcess.kill('SIGKILL');
+    try {
+      // First try graceful shutdown
+      dendriteProcess.kill('SIGTERM');
+      
+      // Wait for process to exit gracefully
+      await new Promise((resolve) => {
+        let timeout;
+        
+        const checkExit = () => {
+          if (dendriteProcess.killed || !dendriteProcess.pid) {
+            clearTimeout(timeout);
+            resolve();
+          }
+        };
+        
+        // Check every 100ms
+        const interval = setInterval(checkExit, 100);
+        
+        // Force kill after 5 seconds if still running
+        timeout = setTimeout(() => {
+          clearInterval(interval);
+          if (!dendriteProcess.killed && dendriteProcess.pid) {
+            console.log('Force killing dendrite server...');
+            try {
+              dendriteProcess.kill('SIGKILL');
+            } catch (e) {
+              // Process might already be dead
+            }
+          }
+          resolve();
+        }, 5000);
+        
+        // Also resolve if process exits
+        dendriteProcess.once('exit', () => {
+          clearInterval(interval);
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
+    } catch (error) {
+      console.log('Error stopping dendrite:', error.message);
     }
+    
     dendriteProcess = null;
   }
 
   // Clean up test directory
   if (existsSync(TEST_DIR)) {
     console.log('Cleaning up test directory...');
-    rmSync(TEST_DIR, { recursive: true, force: true });
+    try {
+      rmSync(TEST_DIR, { recursive: true, force: true });
+    } catch (error) {
+      console.log('Error cleaning test directory:', error.message);
+    }
   }
 }
 

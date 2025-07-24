@@ -1,0 +1,48 @@
+FROM ubuntu:latest
+
+# Install dependencies matching GitHub Actions ubuntu-latest
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    git \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Detect architecture and install appropriate Go version
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then \
+        GO_ARCH="arm64"; \
+    else \
+        GO_ARCH="amd64"; \
+    fi && \
+    wget https://go.dev/dl/go1.23.0.linux-${GO_ARCH}.tar.gz && \
+    tar -C /usr/local -xzf go1.23.0.linux-${GO_ARCH}.tar.gz && \
+    rm go1.23.0.linux-${GO_ARCH}.tar.gz
+
+ENV PATH=$PATH:/usr/local/go/bin
+
+# Install Node.js 20
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs
+
+# Set working directory
+WORKDIR /app
+
+# Copy only necessary files first for better caching
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY package*.json ./
+RUN npm ci
+
+# Install Playwright with dependencies
+RUN npx playwright install --with-deps
+
+# Now copy the rest of the project
+COPY . .
+
+# Build dendrite binary for Linux
+RUN go build -o dendrite .
+
+# Run the tests
+CMD ["npm", "test"]
