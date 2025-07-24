@@ -5,11 +5,26 @@ set -e
 
 echo "🐳 Testing golangci-lint v2.3.0 in Docker..."
 
-# Run golangci-lint in a Docker container
+# Test on AMD64 architecture (GitHub Actions default)
+echo "🔧 Testing on linux/amd64..."
 docker run --rm \
-  -v $(pwd):/app \
+  --platform linux/amd64 \
+  -v "$(pwd)":/app \
   -w /app \
   golangci/golangci-lint:v2.3.0 \
   golangci-lint run
 
-echo "✅ golangci-lint test passed!"
+echo "✅ AMD64 test passed!"
+
+# Test on ARM64 architecture
+echo "🔧 Testing on linux/arm64..."
+docker run --rm \
+  --platform linux/arm64 \
+  -v "$(pwd)":/app \
+  -w /app \
+  golangci/golangci-lint:v2.3.0 \
+  golangci-lint run
+
+echo "✅ ARM64 test passed!"
+
+echo "✅ All golangci-lint tests passed!"

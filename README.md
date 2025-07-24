@@ -253,8 +253,10 @@ Tests the Go linter in isolation:
 
 What it does:
 - Runs golangci-lint v2.3.0 in a Docker container
-- Ensures linter configuration is valid
+- Tests on both AMD64 and ARM64 architectures
+- Ensures linter configuration is valid across platforms
 - Matches the exact linter version used in CI
+- Detects architecture-specific code issues
 
 #### 4. CI Linter Testing (`test-ci-lint.sh`)
 
