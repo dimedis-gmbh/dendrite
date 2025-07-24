@@ -56,37 +56,80 @@ async function setupTestEnvironment() {
       stdio: ['ignore', 'pipe', 'pipe']
     });
 
+    let serverStarted = false;
+    const startTimeout = setTimeout(() => {
+      if (!serverStarted) {
+        dendriteProcess.kill('SIGKILL');
+        reject(new Error('Dendrite server failed to start within timeout'));
+      }
+    }, 20000); // Increase timeout to 20 seconds for slower CI environments
+
     dendriteProcess.stdout.on('data', (data) => {
       const message = data.toString();
       console.log('Dendrite:', message);
       if (message.includes('Server started') || message.includes('Starting Dendrite')) {
-        // Give it a moment to fully start
-        setTimeout(() => {
-          console.log('Dendrite server is ready');
-          resolve();
-        }, 1000);
+        serverStarted = true;
+        clearTimeout(startTimeout);
+        
+        // Wait for server to be fully ready by checking if it responds
+        const checkServer = async () => {
+          const http = require('http');
+          const maxAttempts = 30; // 30 attempts
+          
+          for (let i = 0; i < maxAttempts; i++) {
+            try {
+              await new Promise((resolve, reject) => {
+                const req = http.get(`http://127.0.0.1:${DENDRITE_PORT}/`, (res) => {
+                  if (res.statusCode === 200 || res.statusCode === 404) {
+                    resolve();
+                  } else {
+                    reject(new Error(`Server returned ${res.statusCode}`));
+                  }
+                });
+                req.on('error', reject);
+                req.setTimeout(1000);
+              });
+              
+              console.log('Dendrite server is ready and responding');
+              resolve();
+              return;
+            } catch (err) {
+              // Server not ready yet, wait and retry
+              await new Promise(r => setTimeout(r, 500));
+            }
+          }
+          
+          reject(new Error('Server started but not responding to requests'));
+        };
+        
+        checkServer().catch(reject);
       }
     });
 
     dendriteProcess.stderr.on('data', (data) => {
-      console.error('Dendrite error:', data.toString());
+      const errorMsg = data.toString();
+      console.error('Dendrite error:', errorMsg);
+      
+      // If we get a bind error, reject immediately
+      if (errorMsg.includes('bind: address already in use')) {
+        clearTimeout(startTimeout);
+        serverStarted = true; // Prevent timeout error
+        reject(new Error('Port already in use: ' + errorMsg));
+      }
     });
 
     dendriteProcess.on('error', (err) => {
+      clearTimeout(startTimeout);
       console.error('Failed to start dendrite:', err);
       reject(err);
     });
 
     dendriteProcess.on('exit', (code) => {
-      if (code !== 0 && code !== null) {
-        console.error(`Dendrite exited with code ${code}`);
+      clearTimeout(startTimeout);
+      if (code !== 0 && code !== null && !serverStarted) {
+        reject(new Error(`Dendrite exited with code ${code}`));
       }
     });
-
-    // Timeout if server doesn't start
-    setTimeout(() => {
-      reject(new Error('Dendrite server failed to start within timeout'));
-    }, 10000);
   });
 }
 

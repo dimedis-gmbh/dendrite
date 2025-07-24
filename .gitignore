@@ -24,6 +24,7 @@ node_modules/
 # Playwright test results
 test-results/
 playwright-report/
+tests/e2e/test-data/
 
 # IDE specific files
 .idea/
