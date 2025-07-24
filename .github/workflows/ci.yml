@@ -8,6 +8,7 @@ on:
 
 jobs:
   test:
+
     name: Test
     runs-on: ubuntu-latest
     
@@ -65,7 +66,8 @@ jobs:
     
     - name: Run golangci-lint
       uses: golangci/golangci-lint-action@v6
-      # version will be automatically selected based on go.mod
+      with:
+        version: v2.3.0
   
   test-matrix:
     name: Test on ${{ matrix.os }}
