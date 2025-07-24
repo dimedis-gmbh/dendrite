@@ -182,6 +182,27 @@ The tests automatically:
 
 **Important**: Always run `npm run test:ci` before pushing to ensure tests will pass in GitHub Actions.
 
+##### E2E Test Helper Scripts
+
+The following helper scripts in `tests/e2e/` support the testing infrastructure:
+
+- **`check-port.js`**: Verifies port 3001 is available before running tests
+  ```bash
+  node tests/e2e/check-port.js
+  ```
+  
+- **`cleanup-processes.js`**: Cleans up any lingering dendrite processes
+  ```bash
+  node tests/e2e/cleanup-processes.js
+  ```
+  
+- **`test-setup.js`**: Manages the test environment lifecycle
+  - Creates temporary test directories
+  - Starts/stops dendrite server
+  - Handles process cleanup
+  
+- **`global-setup.js`** & **`global-teardown.js`**: Playwright hooks for test initialization
+
 ### Test Coverage
 
 The project maintains a minimum of 70% test coverage. Run coverage report:
@@ -189,6 +210,95 @@ The project maintains a minimum of 70% test coverage. Run coverage report:
 ```bash
 go test -cover ./...
 ```
+
+### Testing with Docker
+
+To ensure your changes work across different environments and match the CI pipeline, several Docker-based testing scripts are provided:
+
+#### 1. Full CI Environment Simulation (`docker-ci-test.sh`)
+
+This script reproduces the exact GitHub Actions environment locally:
+
+```bash
+./docker-ci-test.sh
+```
+
+What it does:
+- Builds a Docker image matching GitHub Actions' Ubuntu environment
+- Installs the same versions of Go, Node.js, and dependencies
+- Runs the complete test suite as it would in CI
+- Helps catch platform-specific issues before pushing
+
+#### 2. CI Simulation Without Docker (`test-ci-locally.sh`)
+
+Located in `.github/test-ci-locally.sh`, this script simulates CI behavior without Docker:
+
+```bash
+./.github/test-ci-locally.sh
+```
+
+What it does:
+- Builds the dendrite binary
+- Starts dendrite manually (like the old CI did)
+- Runs tests to reproduce port conflict issues
+- Useful for debugging CI-specific problems
+
+#### 3. Linter Testing (`test-golangci-lint.sh`)
+
+Tests the Go linter in isolation:
+
+```bash
+./test-golangci-lint.sh
+```
+
+What it does:
+- Runs golangci-lint v2.3.0 in a Docker container
+- Ensures linter configuration is valid
+- Matches the exact linter version used in CI
+
+#### 4. CI Linter Testing (`test-ci-lint.sh`)
+
+Tests the linter with full CI environment variables:
+
+```bash
+./test-ci-lint.sh
+```
+
+What it does:
+- Creates a temporary copy of the project
+- Sets CI environment variables
+- Runs linter as GitHub Actions would
+- Ensures no environment-specific linter issues
+
+### Docker Testing Prerequisites
+
+Ensure Docker is installed and running:
+
+```bash
+docker --version  # Should show Docker version
+```
+
+### When to Use These Scripts
+
+- **Before pushing**: Run `./docker-ci-test.sh` to ensure CI will pass
+- **Debugging CI failures**: Use `./.github/test-ci-locally.sh` to reproduce issues
+- **After linter config changes**: Run `./test-golangci-lint.sh`
+- **For complete validation**: Run all scripts before major changes
+
+### Docker Configuration
+
+The project includes `Dockerfile.ci` which creates an environment identical to GitHub Actions:
+
+```dockerfile
+# Key features:
+- Ubuntu latest (matching GitHub Actions)
+- Go 1.23 with architecture detection (ARM64/AMD64)
+- Node.js 20 for frontend tests
+- Playwright with all browser dependencies
+- Automatic binary compilation for the container architecture
+```
+
+This ensures tests run in the same environment locally as in CI, preventing "works on my machine" issues.
 
 ## Architecture
 
