@@ -102,16 +102,68 @@ dendrite/
 
 ### Running Tests
 
+#### Backend Tests
+
 ```bash
 # Run Go unit tests
 go test ./...
 
-# Run E2E tests (requires the server to be running)
-npm test
+# Run with verbose output
+go test -v ./...
+
+# Run with race detection
+go test -race ./...
 
 # Run linter
 golangci-lint run
 ```
+
+#### Frontend E2E Tests
+
+The frontend tests use Playwright and automatically set up an isolated test environment with a temporary directory and test files.
+
+```bash
+# Install dependencies first
+npm install
+
+# Run all tests in headless mode (default)
+npm test
+
+# Run tests with UI visible
+npm test -- --headed
+
+# Run tests in a specific browser
+npm test -- --project=chromium
+npm test -- --project=firefox
+npm test -- --project=webkit
+
+# Run tests with UI visible in a specific browser
+npm test -- --headed --project=chromium
+npm test -- --headed --project=firefox
+npm test -- --headed --project=webkit
+
+# Run a specific test file
+npm test tests/e2e/file-manager.spec.js
+
+# Run tests matching a pattern
+npm test -- -g "should copy and paste"
+
+# Run tests with debugging UI
+npm test -- --ui
+
+# Generate and open HTML report
+npm test -- --reporter=html
+npx playwright show-report
+
+# Run tests in debug mode
+npm test -- --debug
+```
+
+The tests automatically:
+- Create a temporary test directory with sample files
+- Start dendrite server pointing to this directory
+- Run all tests
+- Clean up the test environment after completion
 
 ### Test Coverage
 

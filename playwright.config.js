@@ -43,11 +43,7 @@ module.exports = defineConfig({
     },
   ],
 
-  /* Run your local dev server before starting the tests */
-  webServer: {
-    command: './dendrite --listen 127.0.0.1:3001 --dir . --quota 100MB',
-    url: 'http://127.0.0.1:3001',
-    reuseExistingServer: true,
-    timeout: 120 * 1000,
-  },
+  /* Global setup and teardown */
+  globalSetup: require.resolve('./tests/e2e/global-setup.js'),
+  globalTeardown: require.resolve('./tests/e2e/global-teardown.js'),
 });
