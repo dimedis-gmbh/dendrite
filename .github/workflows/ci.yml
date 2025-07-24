@@ -39,11 +39,6 @@ jobs:
     - name: Build binary
       run: go build -o dendrite .
     
-    - name: Start server for E2E tests
-      run: |
-        ./dendrite --listen 127.0.0.1:3001 --dir . --quota 100MB &
-        sleep 2
-    
     - name: Run Playwright tests
       run: npm test
     

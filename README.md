@@ -159,11 +159,28 @@ npx playwright show-report
 npm test -- --debug
 ```
 
+##### Testing for CI Compatibility
+
+To ensure your changes work in CI before pushing:
+
+```bash
+# Check if port 3001 is available (CI requirement)
+npm run test:ci
+
+# Kill any dendrite processes and run tests
+npm run test:local
+
+# Simulate the exact CI environment locally
+./.github/test-ci-locally.sh
+```
+
 The tests automatically:
 - Create a temporary test directory with sample files
 - Start dendrite server pointing to this directory
 - Run all tests
 - Clean up the test environment after completion
+
+**Important**: Always run `npm run test:ci` before pushing to ensure tests will pass in GitHub Actions.
 
 ### Test Coverage
 
