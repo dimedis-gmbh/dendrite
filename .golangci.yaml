@@ -13,6 +13,10 @@ run:
   # include test files or not, default is true
   tests: true
 
+  # skip directories
+  skip-dirs:
+    - tests/e2e/test-data
+
 output:
   format: colored-line-number
   print-issued-lines: true

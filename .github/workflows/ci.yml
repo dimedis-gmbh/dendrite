@@ -65,8 +65,7 @@ jobs:
     
     - name: Run golangci-lint
       uses: golangci/golangci-lint-action@v6
-      with:
-        version: v2.3.0
+      # version will be automatically selected based on go.mod
   
   test-matrix:
     name: Test on ${{ matrix.os }}
