@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"dendrite/internal/config"
-	"dendrite/internal/utils"
+	"dendrite/internal/format"
 )
 
 // Manager handles filesystem operations
@@ -49,31 +49,31 @@ type QuotaInfo struct {
 
 // FileStatInfo represents detailed file stat information
 type FileStatInfo struct {
-	Name       string      `json:"name"`
-	Path       string      `json:"path"`
-	Size       int64       `json:"size"`
-	IsDir      bool        `json:"isDir"`
-	Mode       string      `json:"mode"`
-	ModTime    time.Time   `json:"modTime"`
-	AccessTime time.Time   `json:"accessTime"`
-	ChangeTime time.Time   `json:"changeTime"`
-	UID        uint32      `json:"uid"`
-	Gid        uint32      `json:"gid"`
-	Nlink      uint64      `json:"nlink"`
-	MimeType   string      `json:"mimeType,omitempty"`
+	Name       string    `json:"name"`
+	Path       string    `json:"path"`
+	Size       int64     `json:"size"`
+	IsDir      bool      `json:"isDir"`
+	Mode       string    `json:"mode"`
+	ModTime    time.Time `json:"modTime"`
+	AccessTime time.Time `json:"accessTime"`
+	ChangeTime time.Time `json:"changeTime"`
+	UID        uint32    `json:"uid"`
+	Gid        uint32    `json:"gid"`
+	Nlink      uint64    `json:"nlink"`
+	MimeType   string    `json:"mimeType,omitempty"`
 }
 
 // UploadResult represents the result of a file upload
 type UploadResult struct {
-	Path     string `json:"path"`
-	Size     int64  `json:"size"`
-	Message  string `json:"message"`
+	Path    string `json:"path"`
+	Size    int64  `json:"size"`
+	Message string `json:"message"`
 }
 
 // ListFiles returns a list of files in the given path
 func (m *Manager) ListFiles(path string) ([]FileInfo, error) {
 	fullPath := filepath.Join(m.Config.Dir, path)
-	
+
 	// Security check: ensure path is within managed directory
 	if !m.isPathSafe(fullPath) {
 		return nil, fmt.Errorf("access denied: path outside managed directory")
@@ -186,17 +186,17 @@ func (m *Manager) UploadFile(targetPath, filename string, file io.Reader, size i
 		if err != nil {
 			return nil, fmt.Errorf("failed to calculate current usage: %w", err)
 		}
-		
+
 		if currentUsed+size > m.Config.QuotaBytes {
-			return nil, fmt.Errorf("upload would exceed quota limit (current: %s, file: %s, limit: %s)", 
-				utils.FormatFileSize(currentUsed), 
-				utils.FormatFileSize(size), 
-				utils.FormatFileSize(m.Config.QuotaBytes))
+			return nil, fmt.Errorf("upload would exceed quota limit (current: %s, file: %s, limit: %s)",
+				format.FileSize(currentUsed),
+				format.FileSize(size),
+				format.FileSize(m.Config.QuotaBytes))
 		}
 	}
 
 	fullPath := filepath.Join(m.Config.Dir, targetPath, filename)
-	
+
 	// Security check
 	if !m.isPathSafe(fullPath) {
 		return nil, fmt.Errorf("access denied: path outside managed directory")
@@ -225,8 +225,12 @@ func (m *Manager) UploadFile(targetPath, filename string, file io.Reader, size i
 		return nil, fmt.Errorf("failed to write file: %w", err)
 	}
 
+	// Use forward slashes for API response paths regardless of platform
+	resultPath := filepath.Join(targetPath, filename)
+	resultPath = strings.ReplaceAll(resultPath, "\\", "/")
+	
 	return &UploadResult{
-		Path:    filepath.Join(targetPath, filename),
+		Path:    resultPath,
 		Size:    written,
 		Message: "File uploaded successfully",
 	}, nil
@@ -235,18 +239,18 @@ func (m *Manager) UploadFile(targetPath, filename string, file io.Reader, size i
 // GetFilePath returns the full filesystem path for a relative path
 func (m *Manager) GetFilePath(path string) (string, error) {
 	fullPath := filepath.Join(m.Config.Dir, path)
-	
+
 	if !m.isPathSafe(fullPath) {
 		return "", fmt.Errorf("access denied: path outside managed directory")
 	}
-	
+
 	return fullPath, nil
 }
 
 // DeleteFile deletes a file or directory
 func (m *Manager) DeleteFile(path string) error {
 	fullPath := filepath.Join(m.Config.Dir, path)
-	
+
 	if !m.isPathSafe(fullPath) {
 		return fmt.Errorf("access denied: path outside managed directory")
 	}
@@ -258,7 +262,7 @@ func (m *Manager) DeleteFile(path string) error {
 func (m *Manager) MoveFile(sourcePath, destPath string) error {
 	sourceFullPath := filepath.Join(m.Config.Dir, sourcePath)
 	destFullPath := filepath.Join(m.Config.Dir, destPath)
-	
+
 	if !m.isPathSafe(sourceFullPath) || !m.isPathSafe(destFullPath) {
 		return fmt.Errorf("access denied: path outside managed directory")
 	}
@@ -276,7 +280,7 @@ func (m *Manager) MoveFile(sourcePath, destPath string) error {
 func (m *Manager) CopyFile(sourcePath, destPath string) error {
 	sourceFullPath := filepath.Join(m.Config.Dir, sourcePath)
 	destFullPath := filepath.Join(m.Config.Dir, destPath)
-	
+
 	if !m.isPathSafe(sourceFullPath) || !m.isPathSafe(destFullPath) {
 		return fmt.Errorf("access denied: path outside managed directory")
 	}
@@ -293,17 +297,17 @@ func (m *Manager) CopyFile(sourcePath, destPath string) error {
 		if err != nil {
 			return fmt.Errorf("failed to calculate current usage: %w", err)
 		}
-		
+
 		copySize := sourceInfo.Size()
 		if sourceInfo.IsDir() {
 			copySize, _ = m.calculateDirectorySize(sourceFullPath)
 		}
-		
+
 		if currentUsed+copySize > m.Config.QuotaBytes {
 			return fmt.Errorf("copy would exceed quota limit (current: %s, copy size: %s, limit: %s)",
-				utils.FormatFileSize(currentUsed),
-				utils.FormatFileSize(copySize),
-				utils.FormatFileSize(m.Config.QuotaBytes))
+				format.FileSize(currentUsed),
+				format.FileSize(copySize),
+				format.FileSize(m.Config.QuotaBytes))
 		}
 	}
 
@@ -316,14 +320,14 @@ func (m *Manager) CopyFile(sourcePath, destPath string) error {
 	if sourceInfo.IsDir() {
 		return m.copyDirectory(sourceFullPath, destFullPath)
 	}
-	
+
 	return m.copyFile(sourceFullPath, destFullPath)
 }
 
 // StatFile returns detailed file stat information
 func (m *Manager) StatFile(path string) (*FileStatInfo, error) {
 	fullPath := filepath.Join(m.Config.Dir, path)
-	
+
 	if !m.isPathSafe(fullPath) {
 		return nil, fmt.Errorf("access denied: path outside managed directory")
 	}
@@ -384,7 +388,7 @@ func (m *Manager) copyFile(src, dst string) (err error) {
 	if err != nil {
 		return err
 	}
-	
+
 	return os.Chmod(dst, sourceInfo.Mode())
 }
 
@@ -422,7 +426,7 @@ func (m *Manager) CreateZip(w io.Writer, paths []string) (err error) {
 
 	for _, path := range paths {
 		fullPath := filepath.Join(m.Config.Dir, path)
-		
+
 		if !m.isPathSafe(fullPath) {
 			continue // Skip unsafe paths
 		}
@@ -467,7 +471,7 @@ func (m *Manager) addFileToZip(zw *zip.Writer, fullPath, relativePath string) er
 	if err != nil {
 		return err
 	}
-	
+
 	header.Name = relativePath
 	header.Method = zip.Deflate
 
@@ -494,7 +498,7 @@ func (m *Manager) addDirToZip(zw *zip.Writer, fullPath, relativePath string) err
 		}
 
 		zipPath := filepath.Join(relativePath, relPath)
-		
+
 		if d.IsDir() {
 			// Create directory entry in zip
 			header := &zip.FileHeader{
@@ -513,7 +517,7 @@ func (m *Manager) addDirToZip(zw *zip.Writer, fullPath, relativePath string) err
 // CreateFolder creates a new directory at the specified path
 func (m *Manager) CreateFolder(path string) error {
 	fullPath := filepath.Join(m.Config.Dir, path)
-	
+
 	if !m.isPathSafe(fullPath) {
 		return fmt.Errorf("access denied: path outside managed directory")
 	}

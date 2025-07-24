@@ -196,7 +196,7 @@ func TestManager_UploadFile_QuotaErrorMessage(t *testing.T) {
 			// Create existing files
 			for filename, size := range tt.existingFiles {
 				filePath := filepath.Join(testDir, filename)
-				err := os.WriteFile(filePath, make([]byte, size), 0644)
+				err := os.WriteFile(filePath, make([]byte, size), 0600)
 				require.NoError(t, err)
 			}
 
@@ -229,13 +229,13 @@ func TestManager_CopyFile_QuotaErrorMessage(t *testing.T) {
 	// Create a source file to copy
 	sourceFile := filepath.Join(tempDir, "source.bin")
 	sourceSize := int64(614400) // 600 KB
-	err = os.WriteFile(sourceFile, make([]byte, sourceSize), 0644)
+	err = os.WriteFile(sourceFile, make([]byte, sourceSize), 0600)
 	require.NoError(t, err)
 
 	// Create an existing file to contribute to quota usage
 	existingFile := filepath.Join(tempDir, "existing.bin")
 	existingSize := int64(512000) // 500 KB
-	err = os.WriteFile(existingFile, make([]byte, existingSize), 0644)
+	err = os.WriteFile(existingFile, make([]byte, existingSize), 0600)
 	require.NoError(t, err)
 
 	cfg := &config.Config{

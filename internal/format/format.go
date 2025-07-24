@@ -1,10 +1,10 @@
-// Package utils provides utility functions.
-package utils
+// Package format provides formatting utility functions.
+package format
 
 import "fmt"
 
-// FormatFileSize converts bytes to human-readable format
-func FormatFileSize(bytes int64) string {
+// FileSize converts bytes to human-readable format
+func FileSize(bytes int64) string {
 	const (
 		KB = 1024
 		MB = KB * 1024

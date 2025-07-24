@@ -818,17 +818,17 @@ test.describe('Dendrite File Manager', () => {
   test('should use clean path-based URLs instead of query parameters', async ({ page }) => {
     // Test that URLs are clean and readable
     
-    // Navigate to foo folder
-    const fooFolder = page.locator('.file-row').filter({ hasText: 'foo' });
-    await expect(fooFolder).toBeVisible();
-    await fooFolder.dblclick();
+    // Navigate to internal folder
+    const internalFolder = page.locator('.file-row').filter({ hasText: 'internal' });
+    await expect(internalFolder).toBeVisible();
+    await internalFolder.dblclick();
     
     // Wait for navigation
     await page.waitForTimeout(2000);
     
     // URL should be clean path-based, not query parameter
-    await expect(page).toHaveURL(/\/foo\/?$/);
-    await expect(page.locator('#path-display')).toContainText('foo');
+    await expect(page).toHaveURL(/\/internal\/?$/);
+    await expect(page.locator('#path-display')).toContainText('internal');
     
     // Navigate back to root
     await page.locator('#btn-up').click();
@@ -839,15 +839,15 @@ test.describe('Dendrite File Manager', () => {
     await expect(page.locator('#path-display')).toContainText('/');
     
     // Navigate to nested path
-    const internalFolder = page.locator('.file-row').filter({ hasText: 'internal' });
-    await internalFolder.dblclick();
+    const internalFolder2 = page.locator('.file-row').filter({ hasText: 'internal' });
+    await internalFolder2.dblclick();
     await page.waitForTimeout(2000);
     
     // Should show clean nested path
     await expect(page).toHaveURL(/\/internal\/?$/);
     await expect(page.locator('#path-display')).toContainText('internal');
     
-    // Navigate deeper
+    // Navigate deeper to config folder
     const configFolder = page.locator('.file-row').filter({ hasText: 'config' });
     await configFolder.dblclick();
     await page.waitForTimeout(2000);
@@ -969,6 +969,13 @@ test.describe('Dendrite File Manager', () => {
     // Since we can't easily control the server quota in E2E tests,
     // we'll test that error messages are displayed properly
     
+    // Set up dialog handler before triggering the error
+    let alertText = '';
+    page.on('dialog', async dialog => {
+      alertText = dialog.message();
+      await dialog.accept();
+    });
+    
     // Create a mock file upload that will fail
     await page.click('#btn-upload');
     await expect(page.locator('#upload-modal')).toBeVisible();
@@ -993,22 +1000,13 @@ test.describe('Dendrite File Manager', () => {
       buffer: Buffer.from('test content')
     });
     
-    // Check that the error message is displayed with human-readable sizes
-    await page.waitForTimeout(500);
-    const errorText = await page.evaluate(() => {
-      // Find the last alert/error message shown
-      const alerts = Array.from(document.querySelectorAll('.alert-danger, [role="alert"]'));
-      if (alerts.length > 0) {
-        return alerts[alerts.length - 1].textContent;
-      }
-      // Check if showError was called (it might show in different ways)
-      return document.body.textContent;
-    });
+    // Wait for the alert to be shown
+    await page.waitForTimeout(1000);
     
     // Verify the error contains human-readable file sizes
-    expect(errorText).toContain('20.17 MB');
-    expect(errorText).toContain('31.50 KB');
-    expect(errorText).toContain('1.00 MB');
+    expect(alertText).toContain('20.17 MB');
+    expect(alertText).toContain('31.50 KB');
+    expect(alertText).toContain('1.00 MB');
     
     // Close modal
     await page.click('#upload-modal .close');
