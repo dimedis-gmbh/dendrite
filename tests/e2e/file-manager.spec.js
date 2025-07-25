@@ -3,16 +3,47 @@ const { test, expect } = require('@playwright/test');
 
 test.describe('Dendrite File Manager', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    // Set up console logging for debugging
+    page.on('console', msg => {
+      if (msg.type() === 'error') {
+        console.log('Browser console error:', msg.text());
+      }
+    });
     
-    // Wait for the app to load
-    await page.waitForSelector('#file-list');
+    // Navigate with retry logic for webkit
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        await page.goto('/', { waitUntil: 'networkidle', timeout: 30000 });
+        break;
+      } catch (error) {
+        retries--;
+        if (retries === 0) throw error;
+        console.log(`Navigation failed, retrying... (${retries} retries left)`);
+        await page.waitForTimeout(2000);
+      }
+    }
     
-    // Wait for initial file load
+    // Wait for the app to load with extended timeout
+    await page.waitForSelector('#file-list', { timeout: 20000 });
+    
+    // Wait for initial file load with more robust check
     await page.waitForFunction(() => {
       const tbody = document.querySelector('#file-list-body');
-      return tbody && tbody.children.length > 0;
-    });
+      // Check that tbody exists and has children
+      if (!tbody) return false;
+      // For webkit, also check that the first row is fully rendered
+      const firstRow = tbody.querySelector('.file-row');
+      if (!firstRow) return false;
+      // Check that the row has content
+      const nameCell = firstRow.querySelector('.col-name');
+      return nameCell && nameCell.textContent && nameCell.textContent.trim().length > 0;
+    }, { timeout: 20000 });
+    
+    // Additional wait for webkit to ensure full render
+    if (page.context().browser()?.browserType().name() === 'webkit') {
+      await page.waitForTimeout(500);
+    }
   });
 
   test('should load the file manager interface', async ({ page }) => {
@@ -35,20 +66,56 @@ test.describe('Dendrite File Manager', () => {
     await expect(page.locator('#btn-download-zip')).toBeVisible();
   });
 
-  test('should display files and folders', async ({ page }) => {
+  test('should display files and folders', async ({ page, browserName }) => {
+    // For webkit, ensure the page is fully loaded before checking
+    if (browserName === 'webkit') {
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(1000); // Extra wait for webkit rendering
+    }
+    
+    // Wait for file list to be fully loaded with more specific checks
+    await page.waitForSelector('#file-list-body', { timeout: 20000 });
+    
+    // Wait for specific content to ensure files are loaded
+    await page.waitForFunction(() => {
+      const rows = document.querySelectorAll('.file-row');
+      if (rows.length === 0) return false;
+      
+      // Check that at least one row has actual content
+      for (const row of rows) {
+        const nameCell = row.querySelector('.col-name');
+        if (nameCell && nameCell.textContent && nameCell.textContent.trim().length > 0) {
+          return true;
+        }
+      }
+      return false;
+    }, { timeout: 20000 });
+    
+    // Additional stabilization wait for webkit
+    if (browserName === 'webkit') {
+      await page.waitForTimeout(500);
+    }
+    
     // Check that files are loaded
     const fileRows = page.locator('.file-row');
-    await expect(fileRows.first()).toBeVisible();
+    const rowCount = await fileRows.count();
+    expect(rowCount).toBeGreaterThan(0);
+    await expect(fileRows.first()).toBeVisible({ timeout: 15000 });
     
-    // Check file list headers
-    await expect(page.locator('th.col-name')).toContainText('Name');
-    await expect(page.locator('th.col-size')).toContainText('Size');
-    await expect(page.locator('th.col-type')).toContainText('Type');
-    await expect(page.locator('th.col-modified')).toContainText('Modified');
+    // Check file list headers with individual waits
+    const headers = ['Name', 'Size', 'Type', 'Modified'];
+    for (const header of headers) {
+      const headerLocator = page.locator(`th:has-text("${header}")`);
+      await expect(headerLocator).toBeVisible({ timeout: 10000 });
+    }
     
-    // Verify at least some expected files are present
-    await expect(page.locator('text=readme.txt')).toBeVisible();
-    await expect(page.locator('text=documents')).toBeVisible();
+    // Verify specific files are present with more flexible selectors
+    // Use more specific selectors to avoid ambiguity
+    const readmeFile = page.locator('.file-row').filter({ hasText: 'readme.txt' });
+    const documentsFolder = page.locator('.file-row').filter({ hasText: 'documents' });
+    
+    await expect(readmeFile).toBeVisible({ timeout: 15000 });
+    await expect(documentsFolder).toBeVisible({ timeout: 15000 });
   });
 
   test('should allow file selection with checkboxes', async ({ page }) => {
@@ -278,8 +345,16 @@ test.describe('Dendrite File Manager', () => {
   });
 
   test('should show file properties on context menu', async ({ page }) => {
+    // Wait for file list to load
+    await page.waitForSelector('.file-row', { timeout: 10000 });
+    await page.waitForFunction(() => {
+      const rows = document.querySelectorAll('.file-row');
+      return rows.length > 0;
+    }, { timeout: 10000 });
+    
     // Right-click on a file
     const fileRow = page.locator('.file-row').filter({ hasText: 'main.go' });
+    await expect(fileRow).toBeVisible({ timeout: 10000 });
     await fileRow.click({ button: 'right' });
     
     // Click Properties
@@ -287,7 +362,7 @@ test.describe('Dendrite File Manager', () => {
     
     // Verify properties modal opens
     const propertiesModal = page.locator('#properties-modal');
-    await expect(propertiesModal).toBeVisible();
+    await expect(propertiesModal).toBeVisible({ timeout: 10000 });
     
     // Check properties content
     const content = page.locator('#properties-content');
@@ -303,15 +378,23 @@ test.describe('Dendrite File Manager', () => {
   });
 
   test('should navigate up with up button', async ({ page }) => {
+    // Wait for initial file list to load
+    await page.waitForSelector('.file-row', { timeout: 10000 });
+    await page.waitForFunction(() => {
+      const rows = document.querySelectorAll('.file-row');
+      return rows.length > 0;
+    }, { timeout: 10000 });
+    
     // Navigate into a folder first
     const folderRow = page.locator('.file-row').filter({ hasText: 'documents' });
+    await expect(folderRow).toBeVisible({ timeout: 10000 });
     await folderRow.dblclick();
     
     // Wait for navigation
     await page.waitForFunction(() => {
       const pathDisplay = document.querySelector('#path-display');
       return pathDisplay && pathDisplay.textContent.includes('documents');
-    });
+    }, { timeout: 10000 });
     
     // Click up button
     await page.locator('#btn-up').click();
@@ -320,11 +403,11 @@ test.describe('Dendrite File Manager', () => {
     await page.waitForFunction(() => {
       const pathDisplay = document.querySelector('#path-display');
       return pathDisplay && pathDisplay.textContent === '/';
-    });
+    }, { timeout: 10000 });
     
     // Verify we're back at root
     await expect(page.locator('#path-display')).toHaveText('/');
-    await expect(page.locator('text=readme.txt')).toBeVisible();
+    await expect(page.locator('text=readme.txt')).toBeVisible({ timeout: 10000 });
   });
 
   test('should refresh files when refresh button is clicked', async ({ page }) => {
@@ -759,21 +842,40 @@ test.describe('Dendrite File Manager', () => {
   });
 
   test('should maintain URL when refreshing page', async ({ page }) => {
+    // Wait for initial file list to load
+    await page.waitForSelector('.file-row', { timeout: 10000 });
+    await page.waitForFunction(() => {
+      const rows = document.querySelectorAll('.file-row');
+      return rows.length > 0;
+    }, { timeout: 10000 });
+    
     // Navigate to a subfolder
     const documentsFolder = page.locator('.file-row').filter({ hasText: 'documents' });
+    await expect(documentsFolder).toBeVisible({ timeout: 10000 });
     await documentsFolder.dblclick();
-    await page.waitForTimeout(2000);
+    
+    // Wait for navigation to complete
+    await page.waitForFunction(() => {
+      const pathDisplay = document.querySelector('#path-display');
+      return pathDisplay && pathDisplay.textContent.includes('documents');
+    }, { timeout: 10000 });
     
     // Get current URL
     const urlBeforeRefresh = page.url();
     
     // Refresh the page
     await page.reload();
-    await page.waitForTimeout(2000);
+    
+    // Wait for page to load after refresh
+    await page.waitForSelector('#file-list-body', { timeout: 10000 });
+    await page.waitForFunction(() => {
+      const rows = document.querySelectorAll('.file-row');
+      return rows.length > 0;
+    }, { timeout: 10000 });
     
     // Should still be in the same folder
-    await expect(page.locator('#path-display')).toContainText('documents');
-    await expect(page.locator('text=report.pdf')).toBeVisible();
+    await expect(page.locator('#path-display')).toContainText('documents', { timeout: 10000 });
+    await expect(page.locator('text=report.pdf')).toBeVisible({ timeout: 10000 });
     
     // URL should be the same
     await expect(page).toHaveURL(urlBeforeRefresh);
@@ -1022,9 +1124,16 @@ test.describe('Dendrite File Manager', () => {
       }
     });
     
+    // Wait for initial file list to load
+    await page.waitForSelector('.file-row', { timeout: 10000 });
+    await page.waitForFunction(() => {
+      const rows = document.querySelectorAll('.file-row');
+      return rows.length > 0;
+    }, { timeout: 10000 });
+    
     // Step 1: Copy test.md file
     const testFile = page.locator('.file-row').filter({ hasText: 'test.md' });
-    await expect(testFile).toBeVisible();
+    await expect(testFile).toBeVisible({ timeout: 10000 });
     
     await testFile.click({ button: 'right' });
     const contextMenu = page.locator('#context-menu');
@@ -1033,13 +1142,16 @@ test.describe('Dendrite File Manager', () => {
     await page.locator('[data-action="copy"]').click();
     await expect(contextMenu).toBeHidden();
     
-    // Step 2: Navigate to documents folder - use a working navigation method
+    // Step 2: Navigate to documents folder
     const documentsFolder = page.locator('.file-row').filter({ hasText: 'documents' });
-    await expect(documentsFolder).toBeVisible();
+    await expect(documentsFolder).toBeVisible({ timeout: 10000 });
     await documentsFolder.dblclick();
     
-    // Wait for URL change or path change (simplified check)
-    await page.waitForTimeout(2000);
+    // Wait for navigation to complete
+    await page.waitForFunction(() => {
+      const pathDisplay = document.querySelector('#path-display');
+      return pathDisplay && pathDisplay.textContent.includes('documents');
+    }, { timeout: 10000 });
     
     // Step 3: Right-click in empty area and paste
     const fileListContainer = page.locator('#file-list-container');

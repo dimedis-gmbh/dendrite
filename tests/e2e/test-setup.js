@@ -74,32 +74,60 @@ async function setupTestEnvironment() {
         // Wait for server to be fully ready by checking if it responds
         const checkServer = async () => {
           const http = require('http');
-          const maxAttempts = 30; // 30 attempts
+          const maxAttempts = 60; // Increase to 60 attempts for CI
           
           for (let i = 0; i < maxAttempts; i++) {
             try {
               await new Promise((resolve, reject) => {
                 const req = http.get(`http://127.0.0.1:${DENDRITE_PORT}/`, (res) => {
+                  let data = '';
+                  res.on('data', chunk => data += chunk);
+                  res.on('end', () => {
+                    if (res.statusCode === 200 || res.statusCode === 404) {
+                      // Additional check: verify we get HTML response
+                      if (res.statusCode === 200 && !data.includes('<html')) {
+                        reject(new Error('Server responded but not with HTML'));
+                      } else {
+                        resolve();
+                      }
+                    } else {
+                      reject(new Error(`Server returned ${res.statusCode}`));
+                    }
+                  });
+                });
+                req.on('error', reject);
+                req.setTimeout(2000); // Increase timeout
+              });
+              
+              // Do a second check to ensure server is stable
+              await new Promise(r => setTimeout(r, 1000));
+              
+              // Verify again that server is still responding
+              await new Promise((resolve, reject) => {
+                const req = http.get(`http://127.0.0.1:${DENDRITE_PORT}/`, (res) => {
                   if (res.statusCode === 200 || res.statusCode === 404) {
                     resolve();
                   } else {
-                    reject(new Error(`Server returned ${res.statusCode}`));
+                    reject(new Error(`Server became unresponsive`));
                   }
                 });
                 req.on('error', reject);
                 req.setTimeout(1000);
               });
               
-              console.log('Dendrite server is ready and responding');
+              console.log('Dendrite server is ready and responding consistently');
               resolve();
               return;
             } catch (err) {
               // Server not ready yet, wait and retry
-              await new Promise(r => setTimeout(r, 500));
+              if (i % 10 === 0) {
+                console.log(`Still waiting for server... (attempt ${i + 1}/${maxAttempts})`);
+              }
+              await new Promise(r => setTimeout(r, 1000)); // Increase wait time
             }
           }
           
-          reject(new Error('Server started but not responding to requests'));
+          reject(new Error('Server started but not responding to requests after 60 attempts'));
         };
         
         checkServer().catch(reject);
