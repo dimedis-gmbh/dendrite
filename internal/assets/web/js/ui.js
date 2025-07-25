@@ -60,6 +60,20 @@ class UI {
         
         // Handle JWT authentication if present
         this.handleJWTAuthentication();
+        
+        // Listen for hash changes to handle new JWT tokens
+        window.addEventListener('hashchange', () => {
+            // Check if there's a new JWT in the hash
+            const newToken = this.extractJWTFromURL();
+            if (newToken) {
+                // Clear any existing session
+                this.clearJWTStorage();
+                // Handle the new JWT
+                this.handleJWTAuthentication();
+                // Reload the file list with new credentials
+                this.loadFiles('/');
+            }
+        });
     }
     
     extractJWTFromURL() {
