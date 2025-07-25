@@ -57,6 +57,158 @@ class UI {
         
         // Drag and drop for file upload
         this.setupDragAndDrop();
+        
+        // Handle JWT authentication if present
+        this.handleJWTAuthentication();
+    }
+    
+    extractJWTFromURL() {
+        // Check URL hash (secure - doesn't get sent to server)
+        const hash = window.location.hash.substring(1); // Remove leading #
+        if (hash && hash.split('.').length === 3) {
+            return hash;
+        }
+        return null;
+    }
+    
+    parseJWT(token) {
+        try {
+            const parts = token.split('.');
+            if (parts.length !== 3) return null;
+            
+            const payload = parts[1];
+            const decoded = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+            return JSON.parse(decoded);
+        } catch (error) {
+            console.error('Failed to parse JWT:', error);
+            return null;
+        }
+    }
+    
+    handleJWTAuthentication() {
+        const jwtToken = this.extractJWTFromURL();
+        if (!jwtToken) {
+            // Check if JWT is already stored in localStorage
+            this.checkStoredJWT();
+            return;
+        }
+        
+        // Parse JWT to extract claims
+        const claims = this.parseJWT(jwtToken);
+        if (!claims) {
+            showError('Invalid JWT token');
+            return;
+        }
+        
+        // Store JWT and claims in localStorage
+        localStorage.setItem('dendrite_jwt', jwtToken);
+        localStorage.setItem('dendrite_jwt_claims', JSON.stringify(claims));
+        
+        // Calculate expiry timestamp
+        let expiryTimestamp = null;
+        if (claims.expires) {
+            expiryTimestamp = new Date(claims.expires).getTime();
+        } else if (claims.exp) {
+            // Standard JWT exp claim (seconds since epoch)
+            expiryTimestamp = claims.exp * 1000;
+        }
+        
+        if (expiryTimestamp) {
+            localStorage.setItem('dendrite_jwt_expires', expiryTimestamp.toString());
+        }
+        
+        // Remove JWT from URL hash to prevent it from being bookmarked
+        window.history.replaceState({}, document.title, window.location.pathname);
+        
+        // Update session display
+        this.updateSessionDisplay();
+    }
+    
+    checkStoredJWT() {
+        const storedJWT = localStorage.getItem('dendrite_jwt');
+        const expiryStr = localStorage.getItem('dendrite_jwt_expires');
+        
+        if (!storedJWT) return;
+        
+        // Check if JWT has expired
+        if (expiryStr) {
+            const expiry = parseInt(expiryStr);
+            if (Date.now() > expiry) {
+                // JWT has expired, clear storage
+                this.clearJWTStorage();
+                showError('Session expired. Please authenticate again.');
+                return;
+            }
+        }
+        
+        // Update session display
+        this.updateSessionDisplay();
+    }
+    
+    clearJWTStorage() {
+        localStorage.removeItem('dendrite_jwt');
+        localStorage.removeItem('dendrite_jwt_claims');
+        localStorage.removeItem('dendrite_jwt_expires');
+        
+        // Clear session update interval
+        if (this.sessionUpdateInterval) {
+            clearInterval(this.sessionUpdateInterval);
+            this.sessionUpdateInterval = null;
+        }
+        
+        // Hide session info
+        const sessionInfo = document.getElementById('session-info');
+        if (sessionInfo) {
+            sessionInfo.classList.add('hidden');
+        }
+    }
+    
+    updateSessionDisplay() {
+        const expiryStr = localStorage.getItem('dendrite_jwt_expires');
+        const sessionInfo = document.getElementById('session-info');
+        const sessionText = document.getElementById('session-text');
+        
+        if (!expiryStr || !sessionInfo || !sessionText) {
+            if (sessionInfo) {
+                sessionInfo.classList.add('hidden');
+            }
+            return;
+        }
+        
+        const expiry = parseInt(expiryStr);
+        const now = Date.now();
+        
+        if (now > expiry) {
+            this.clearJWTStorage();
+            showError('Session expired. Please authenticate again.');
+            sessionInfo.classList.add('hidden');
+            return;
+        }
+        
+        // Update session expiry display
+        const remaining = expiry - now;
+        const minutes = Math.floor(remaining / 60000);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+        
+        let timeStr;
+        if (days > 0) {
+            timeStr = `${days} day${days > 1 ? 's' : ''}`;
+        } else if (hours > 0) {
+            timeStr = `${hours} hour${hours > 1 ? 's' : ''}`;
+        } else if (minutes > 0) {
+            timeStr = `${minutes} minute${minutes > 1 ? 's' : ''}`;
+        } else {
+            timeStr = 'less than a minute';
+        }
+        
+        sessionText.textContent = `Session expires in ${timeStr}`;
+        sessionInfo.classList.remove('hidden');
+        
+        // Set up periodic updates
+        if (!this.sessionUpdateInterval) {
+            this.sessionUpdateInterval = setInterval(() => this.updateSessionDisplay(), 60000); // Update every minute
+        }
     }
     
     initBrowserHistory() {
@@ -74,6 +226,12 @@ class UI {
     }
     
     getPathFromURL() {
+        // First check if there's a JWT token in the URL
+        const jwtToken = this.extractJWTFromURL();
+        if (jwtToken) {
+            return '/'; // JWT paths always start at root
+        }
+        
         // First try to get path from URL pathname
         let path = window.location.pathname;
         

@@ -19,12 +19,21 @@ import (
 // Manager handles filesystem operations
 type Manager struct {
 	Config *config.Config
+	RestrictedDir string // JWT-restricted subdirectory (relative to Config.Dir)
 }
 
 // New creates a new filesystem manager
 func New(cfg *config.Config) *Manager {
 	return &Manager{
 		Config: cfg,
+	}
+}
+
+// NewWithRestriction creates a new filesystem manager with JWT directory restriction
+func NewWithRestriction(cfg *config.Config, restrictedDir string) *Manager {
+	return &Manager{
+		Config:        cfg,
+		RestrictedDir: restrictedDir,
 	}
 }
 
@@ -70,9 +79,17 @@ type UploadResult struct {
 	Message string `json:"message"`
 }
 
+// getBaseDir returns the effective base directory considering JWT restrictions
+func (m *Manager) getBaseDir() string {
+	if m.RestrictedDir != "" {
+		return filepath.Join(m.Config.Dir, m.RestrictedDir)
+	}
+	return m.Config.Dir
+}
+
 // ListFiles returns a list of files in the given path
 func (m *Manager) ListFiles(path string) ([]FileInfo, error) {
-	fullPath := filepath.Join(m.Config.Dir, path)
+	fullPath := filepath.Join(m.getBaseDir(), path)
 
 	// Security check: ensure path is within managed directory
 	if !m.isPathSafe(fullPath) {
@@ -113,7 +130,7 @@ func (m *Manager) ListFiles(path string) ([]FileInfo, error) {
 
 // GetQuotaInfo returns current quota usage information
 func (m *Manager) GetQuotaInfo() (*QuotaInfo, error) {
-	used, err := m.calculateDirectorySize(m.Config.Dir)
+	used, err := m.calculateDirectorySize(m.getBaseDir())
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate directory size: %w", err)
 	}
@@ -140,7 +157,7 @@ func (m *Manager) isPathSafe(path string) bool {
 		return false
 	}
 
-	managedAbs, err := filepath.Abs(m.Config.Dir)
+	managedAbs, err := filepath.Abs(m.getBaseDir())
 	if err != nil {
 		return false
 	}
@@ -182,7 +199,7 @@ func (m *Manager) UploadFile(targetPath, filename string, file io.Reader, size i
 	result *UploadResult, err error) {
 	// Check quota before upload
 	if m.Config.QuotaBytes > 0 {
-		currentUsed, err := m.calculateDirectorySize(m.Config.Dir)
+		currentUsed, err := m.calculateDirectorySize(m.getBaseDir())
 		if err != nil {
 			return nil, fmt.Errorf("failed to calculate current usage: %w", err)
 		}
@@ -195,7 +212,7 @@ func (m *Manager) UploadFile(targetPath, filename string, file io.Reader, size i
 		}
 	}
 
-	fullPath := filepath.Join(m.Config.Dir, targetPath, filename)
+	fullPath := filepath.Join(m.getBaseDir(), targetPath, filename)
 
 	// Security check
 	if !m.isPathSafe(fullPath) {
@@ -238,7 +255,7 @@ func (m *Manager) UploadFile(targetPath, filename string, file io.Reader, size i
 
 // GetFilePath returns the full filesystem path for a relative path
 func (m *Manager) GetFilePath(path string) (string, error) {
-	fullPath := filepath.Join(m.Config.Dir, path)
+	fullPath := filepath.Join(m.getBaseDir(), path)
 
 	if !m.isPathSafe(fullPath) {
 		return "", fmt.Errorf("access denied: path outside managed directory")
@@ -249,7 +266,7 @@ func (m *Manager) GetFilePath(path string) (string, error) {
 
 // DeleteFile deletes a file or directory
 func (m *Manager) DeleteFile(path string) error {
-	fullPath := filepath.Join(m.Config.Dir, path)
+	fullPath := filepath.Join(m.getBaseDir(), path)
 
 	if !m.isPathSafe(fullPath) {
 		return fmt.Errorf("access denied: path outside managed directory")
@@ -260,8 +277,8 @@ func (m *Manager) DeleteFile(path string) error {
 
 // MoveFile moves a file or directory from source to destination
 func (m *Manager) MoveFile(sourcePath, destPath string) error {
-	sourceFullPath := filepath.Join(m.Config.Dir, sourcePath)
-	destFullPath := filepath.Join(m.Config.Dir, destPath)
+	sourceFullPath := filepath.Join(m.getBaseDir(), sourcePath)
+	destFullPath := filepath.Join(m.getBaseDir(), destPath)
 
 	if !m.isPathSafe(sourceFullPath) || !m.isPathSafe(destFullPath) {
 		return fmt.Errorf("access denied: path outside managed directory")
@@ -278,8 +295,8 @@ func (m *Manager) MoveFile(sourcePath, destPath string) error {
 
 // CopyFile copies a file or directory from source to destination
 func (m *Manager) CopyFile(sourcePath, destPath string) error {
-	sourceFullPath := filepath.Join(m.Config.Dir, sourcePath)
-	destFullPath := filepath.Join(m.Config.Dir, destPath)
+	sourceFullPath := filepath.Join(m.getBaseDir(), sourcePath)
+	destFullPath := filepath.Join(m.getBaseDir(), destPath)
 
 	if !m.isPathSafe(sourceFullPath) || !m.isPathSafe(destFullPath) {
 		return fmt.Errorf("access denied: path outside managed directory")
@@ -293,7 +310,7 @@ func (m *Manager) CopyFile(sourcePath, destPath string) error {
 
 	// Check quota for copy operation
 	if m.Config.QuotaBytes > 0 {
-		currentUsed, err := m.calculateDirectorySize(m.Config.Dir)
+		currentUsed, err := m.calculateDirectorySize(m.getBaseDir())
 		if err != nil {
 			return fmt.Errorf("failed to calculate current usage: %w", err)
 		}
@@ -326,7 +343,7 @@ func (m *Manager) CopyFile(sourcePath, destPath string) error {
 
 // StatFile returns detailed file stat information
 func (m *Manager) StatFile(path string) (*FileStatInfo, error) {
-	fullPath := filepath.Join(m.Config.Dir, path)
+	fullPath := filepath.Join(m.getBaseDir(), path)
 
 	if !m.isPathSafe(fullPath) {
 		return nil, fmt.Errorf("access denied: path outside managed directory")
@@ -425,7 +442,7 @@ func (m *Manager) CreateZip(w io.Writer, paths []string) (err error) {
 	}()
 
 	for _, path := range paths {
-		fullPath := filepath.Join(m.Config.Dir, path)
+		fullPath := filepath.Join(m.getBaseDir(), path)
 
 		if !m.isPathSafe(fullPath) {
 			continue // Skip unsafe paths
@@ -516,7 +533,7 @@ func (m *Manager) addDirToZip(zw *zip.Writer, fullPath, relativePath string) err
 
 // CreateFolder creates a new directory at the specified path
 func (m *Manager) CreateFolder(path string) error {
-	fullPath := filepath.Join(m.Config.Dir, path)
+	fullPath := filepath.Join(m.getBaseDir(), path)
 
 	if !m.isPathSafe(fullPath) {
 		return fmt.Errorf("access denied: path outside managed directory")

@@ -393,7 +393,7 @@ body {
     background: #f8f8f8;
 }
 
-#properties-content td:last-child {Did
+#properties-content td:last-child {
     word-break: break-all;
 }
 

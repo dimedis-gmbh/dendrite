@@ -14,6 +14,7 @@ type Config struct {
 	Dir        string
 	Quota      string
 	QuotaBytes int64
+	JWTSecret  string
 }
 
 // ParseQuota parses the quota string and sets QuotaBytes

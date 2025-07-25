@@ -71,6 +71,7 @@ The application accepts these arguments:
 - Before commiting always run all tests and linters (frontend and backend)
 - Always implement changes having maximum security in mind.
 - Tests (fronend and backend) must cover the happy and the unhappy path.
+- Don't forget to update the documentation.
 
 ## Releasing
 
@@ -81,4 +82,6 @@ The application accepts these arguments:
 - On each push to any branch go unit tests, playwright frontend test and golanci-lint will run
 - Binary releases will be created for Linux AMD64, Mac Silicon and Windows 64bit
 - The github command line client `gh` is set up and has full admin right on my GitHub projects.
+- When fixing issues or implementing new features, always create a branch and a merge request.
+- Mention the issue number in the commit message to link them together
  

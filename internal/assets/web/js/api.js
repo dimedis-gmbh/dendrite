@@ -6,6 +6,29 @@ class DendriteAPI {
 
     async request(url, options = {}) {
         try {
+            // Add JWT token to headers if available
+            const jwt = localStorage.getItem('dendrite_jwt');
+            if (jwt) {
+                // Check if JWT has expired
+                const expiryStr = localStorage.getItem('dendrite_jwt_expires');
+                if (expiryStr) {
+                    const expiry = parseInt(expiryStr);
+                    if (Date.now() > expiry) {
+                        // JWT has expired
+                        localStorage.removeItem('dendrite_jwt');
+                        localStorage.removeItem('dendrite_jwt_claims');
+                        localStorage.removeItem('dendrite_jwt_expires');
+                        throw new Error('Session expired. Please authenticate again.');
+                    }
+                }
+                
+                // Add Authorization header
+                if (!options.headers) {
+                    options.headers = {};
+                }
+                options.headers['Authorization'] = `Bearer ${jwt}`;
+            }
+            
             const response = await fetch(this.baseURL + url, options);
             if (!response.ok) {
                 const error = await response.text();
