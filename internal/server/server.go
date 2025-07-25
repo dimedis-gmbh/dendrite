@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gorilla/mux"
 
@@ -93,7 +94,7 @@ func (s *Server) getFilesystemForRequest(r *http.Request) *filesystem.Manager {
 	return filesystem.NewWithRestriction(s.Config, claims.Dir)
 }
 
-func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
+func (s *Server) serveIndex(w http.ResponseWriter, _ *http.Request) {
 	// Serve index.html from embedded filesystem
 	indexContent, err := fs.ReadFile(s.webFS, "index.html")
 	if err != nil {
@@ -118,6 +119,11 @@ func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {
 	
 	files, err := fs.ListFiles(path)
 	if err != nil {
+		// Check if it's a "not found" error
+		if strings.Contains(err.Error(), "directory not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
