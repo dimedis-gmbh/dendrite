@@ -705,10 +705,34 @@ class UI {
             this.clearSelection();
         }
         
+        // Update context menu items based on selection
+        this.updateContextMenuItems();
+        
         const contextMenu = document.getElementById('context-menu');
         contextMenu.style.left = e.pageX + 'px';
         contextMenu.style.top = e.pageY + 'px';
         contextMenu.classList.remove('hidden');
+    }
+    
+    updateContextMenuItems() {
+        const openItem = document.querySelector('[data-action="open"]');
+        const selectedPaths = Array.from(this.selectedFiles);
+        
+        // Reset all items to enabled state
+        document.querySelectorAll('.menu-item').forEach(item => {
+            item.classList.remove('disabled');
+        });
+        
+        // Disable "Open" for files (only enable for folders)
+        if (selectedPaths.length === 1) {
+            const row = document.querySelector(`[data-path="${selectedPaths[0]}"]`);
+            if (row && row.dataset.isDir !== 'true') {
+                openItem.classList.add('disabled');
+            }
+        } else if (selectedPaths.length > 1) {
+            // Disable "Open" for multiple selections
+            openItem.classList.add('disabled');
+        }
     }
     
     hideContextMenu() {
@@ -718,6 +742,9 @@ class UI {
     async handleContextMenuAction(e) {
         const action = e.target.dataset.action;
         if (!action) return;
+        
+        // Don't process if the menu item is disabled
+        if (e.target.classList.contains('disabled')) return;
         
         this.hideContextMenu();
         
@@ -730,9 +757,8 @@ class UI {
                     const row = document.querySelector(`[data-path="${selectedPaths[0]}"]`);
                     if (row.dataset.isDir === 'true') {
                         this.loadFiles(selectedPaths[0]);
-                    } else {
-                        this.downloadFile(selectedPaths[0]);
                     }
+                    // Note: We no longer download files on "open" action
                 }
                 break;
                 

@@ -71,7 +71,8 @@ The application accepts these arguments:
 - Before commiting always run all tests and linters (frontend and backend)
 - Always implement changes having maximum security in mind.
 - Tests (fronend and backend) must cover the happy and the unhappy path.
-- Don't forget to update the documentation.
+- Remember to update the documentation.
+- When working on issues reported via GitHub, always read all comments of the issue.
 
 ## Releasing
 
