@@ -9,9 +9,11 @@
     "test:ui": "playwright test --ui",
     "test:ci": "node tests/e2e/check-port.js && playwright test",
     "pretest": "node tests/e2e/cleanup-processes.js",
-    "test:local": "npm run pretest && npm test"
+    "test:local": "npm run pretest && npm test",
+    "generate-icons": "node scripts/generate-icons.js"
   },
   "devDependencies": {
+    "@fortawesome/fontawesome-free": "^6.7.2",
     "@playwright/test": "^1.40.0"
   }
 }

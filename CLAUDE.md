@@ -51,7 +51,7 @@ The application accepts these arguments:
 - File stat information via right-click context
 
 ### Frontend
-- ExtJS Community Edition - latest stable version (embedded using go embed)
+- Pure and handcrafted JS
 - Windows Explorer-like interface
 - Drag and drop file upload and file/folder movement
 - Keyboard shortcuts (Ctrl/Cmd+X, C, V)
@@ -68,6 +68,9 @@ The application accepts these arguments:
 - Quota enforcement: reject write operations that would exceed limits
 - When quota exceeded at startup: read-only/download-only mode with delete operations only
 - Minimum 70% test coverage requirement
+- Before commiting always run all tests and linters (frontend and backend)
+- Always implement changes having maximum security in mind.
+- Tests (fronend and backend) must cover the happy and the unhappy path.
 
 ## Releasing
 
@@ -78,3 +81,4 @@ The application accepts these arguments:
 - On each push to any branch go unit tests, playwright frontend test and golanci-lint will run
 - Binary releases will be created for Linux AMD64, Mac Silicon and Windows 64bit
 - The github command line client `gh` is set up and has full admin right on my GitHub projects.
+ 
