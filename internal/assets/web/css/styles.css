@@ -43,6 +43,21 @@ body {
     color: #666;
 }
 
+#session-info .session-alert {
+    color: #ff6b6b;
+    margin-right: 5px;
+    animation: blink 1s ease-in-out infinite;
+}
+
+@keyframes blink {
+    0%, 50%, 100% {
+        opacity: 1;
+    }
+    25%, 75% {
+        opacity: 0.3;
+    }
+}
+
 #quota-info {
     display: flex;
     align-items: center;

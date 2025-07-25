@@ -181,6 +181,7 @@ class UI {
         const expiryStr = localStorage.getItem('dendrite_jwt_expires');
         const sessionInfo = document.getElementById('session-info');
         const sessionText = document.getElementById('session-text');
+        const sessionAlert = document.getElementById('session-alert');
         
         if (!expiryStr || !sessionInfo || !sessionText) {
             if (sessionInfo) {
@@ -199,17 +200,29 @@ class UI {
             return;
         }
         
-        // Update session expiry display
+        // Calculate time remaining
         const remaining = expiry - now;
-        const minutes = Math.floor(remaining / 60000);
+        const totalSeconds = Math.floor(remaining / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
         const hours = Math.floor(minutes / 60);
         const days = Math.floor(hours / 24);
         
+        // Format the display string
         let timeStr;
         if (days > 0) {
-            timeStr = `${days} day${days > 1 ? 's' : ''}`;
+            const remainingHours = hours % 24;
+            if (remainingHours > 0) {
+                timeStr = `${days} day${days > 1 ? 's' : ''} ${remainingHours} hour${remainingHours > 1 ? 's' : ''}`;
+            } else {
+                timeStr = `${days} day${days > 1 ? 's' : ''}`;
+            }
         } else if (hours > 0) {
-            timeStr = `${hours} hour${hours > 1 ? 's' : ''}`;
+            const remainingMinutes = minutes % 60;
+            if (remainingMinutes > 0) {
+                timeStr = `${hours} hour${hours > 1 ? 's' : ''} ${remainingMinutes} minute${remainingMinutes > 1 ? 's' : ''}`;
+            } else {
+                timeStr = `${hours} hour${hours > 1 ? 's' : ''}`;
+            }
         } else if (minutes > 0) {
             timeStr = `${minutes} minute${minutes > 1 ? 's' : ''}`;
         } else {
@@ -218,6 +231,19 @@ class UI {
         
         sessionText.textContent = `Session expires in ${timeStr}`;
         sessionInfo.classList.remove('hidden');
+        
+        // Show/hide alert icon for 5 minutes or less
+        if (sessionAlert) {
+            if (minutes <= 5) {
+                sessionAlert.classList.remove('hidden');
+                // Change text color to match alert
+                sessionText.style.color = '#ff6b6b';
+            } else {
+                sessionAlert.classList.add('hidden');
+                // Reset text color
+                sessionText.style.color = '';
+            }
+        }
         
         // Set up periodic updates
         if (!this.sessionUpdateInterval) {
