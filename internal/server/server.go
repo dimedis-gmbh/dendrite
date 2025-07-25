@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gorilla/mux"
 
 	"dendrite/internal/assets"
+	"dendrite/internal/auth"
 	"dendrite/internal/config"
 	"dendrite/internal/filesystem"
 )
@@ -45,6 +47,12 @@ func New(cfg *config.Config) *Server {
 func (s *Server) setupRoutes() {
 	// API routes
 	api := s.Router.PathPrefix("/api").Subrouter()
+	
+	// Apply JWT middleware if JWT secret is configured
+	if s.Config.JWTSecret != "" {
+		api.Use(auth.JWTMiddleware(s.Config.JWTSecret))
+	}
+	
 	api.HandleFunc("/files", s.listFiles).Methods("GET")
 	api.HandleFunc("/files", s.uploadFile).Methods("POST")
 	api.HandleFunc("/files/{path:.+}/stat", s.statFile).Methods("GET")
@@ -68,6 +76,24 @@ func (s *Server) setupRoutes() {
 	s.Router.PathPrefix("/").HandlerFunc(s.serveIndex)
 }
 
+// getFilesystemForRequest returns a filesystem manager with JWT restrictions if applicable
+func (s *Server) getFilesystemForRequest(r *http.Request) *filesystem.Manager {
+	// If JWT authentication is not enabled, return the default filesystem manager
+	if s.Config.JWTSecret == "" {
+		return s.FS
+	}
+	
+	// Get JWT claims from context
+	claims, ok := auth.GetClaimsFromContext(r.Context())
+	if !ok || claims.Dir == "" {
+		// No valid claims or no directory restriction, return default
+		return s.FS
+	}
+	
+	// Create a new filesystem manager with JWT directory restriction
+	return filesystem.NewWithRestriction(s.Config, claims.Dir)
+}
+
 func (s *Server) serveIndex(w http.ResponseWriter, _ *http.Request) {
 	// Serve index.html from embedded filesystem
 	indexContent, err := fs.ReadFile(s.webFS, "index.html")
@@ -88,8 +114,16 @@ func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {
 		path = "/"
 	}
 
-	files, err := s.FS.ListFiles(path)
+	// Get filesystem manager with JWT restrictions if applicable
+	fs := s.getFilesystemForRequest(r)
+	
+	files, err := fs.ListFiles(path)
 	if err != nil {
+		// Check if it's a "not found" error
+		if strings.Contains(err.Error(), "directory not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -129,7 +163,10 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	result, err := s.FS.UploadFile(targetPath, header.Filename, file, header.Size)
+	// Get filesystem manager with JWT restrictions if applicable
+	fs := s.getFilesystemForRequest(r)
+	
+	result, err := fs.UploadFile(targetPath, header.Filename, file, header.Size)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -145,7 +182,10 @@ func (s *Server) getFile(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	path := vars["path"]
 
-	filePath, err := s.FS.GetFilePath(path)
+	// Get filesystem manager with JWT restrictions if applicable
+	fs := s.getFilesystemForRequest(r)
+	
+	filePath, err := fs.GetFilePath(path)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -174,7 +214,10 @@ func (s *Server) deleteFile(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	path := vars["path"]
 
-	err := s.FS.DeleteFile(path)
+	// Get filesystem manager with JWT restrictions if applicable
+	fs := s.getFilesystemForRequest(r)
+	
+	err := fs.DeleteFile(path)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -199,7 +242,10 @@ func (s *Server) moveFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := s.FS.MoveFile(sourcePath, req.DestPath)
+	// Get filesystem manager with JWT restrictions if applicable
+	fs := s.getFilesystemForRequest(r)
+	
+	err := fs.MoveFile(sourcePath, req.DestPath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -224,7 +270,10 @@ func (s *Server) copyFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := s.FS.CopyFile(sourcePath, req.DestPath)
+	// Get filesystem manager with JWT restrictions if applicable
+	fs := s.getFilesystemForRequest(r)
+	
+	err := fs.CopyFile(sourcePath, req.DestPath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -240,7 +289,10 @@ func (s *Server) statFile(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	path := vars["path"]
 
-	stat, err := s.FS.StatFile(path)
+	// Get filesystem manager with JWT restrictions if applicable
+	fs := s.getFilesystemForRequest(r)
+	
+	stat, err := fs.StatFile(path)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -277,15 +329,21 @@ func (s *Server) downloadZip(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", zipName))
 
-	err := s.FS.CreateZip(w, req.Paths)
+	// Get filesystem manager with JWT restrictions if applicable
+	fs := s.getFilesystemForRequest(r)
+	
+	err := fs.CreateZip(w, req.Paths)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
 
-func (s *Server) getQuotaInfo(w http.ResponseWriter, _ *http.Request) {
-	info, err := s.FS.GetQuotaInfo()
+func (s *Server) getQuotaInfo(w http.ResponseWriter, r *http.Request) {
+	// Get filesystem manager with JWT restrictions if applicable
+	fs := s.getFilesystemForRequest(r)
+	
+	info, err := fs.GetQuotaInfo()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -312,7 +370,10 @@ func (s *Server) createFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := s.FS.CreateFolder(req.Path)
+	// Get filesystem manager with JWT restrictions if applicable
+	fs := s.getFilesystemForRequest(r)
+	
+	err := fs.CreateFolder(req.Path)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

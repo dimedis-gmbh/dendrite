@@ -18,6 +18,7 @@ Dendrite is a web-based file manager written in Go that allows managing remote f
 - 🔗 **Clean URLs**: Navigate with clean path-based URLs (e.g., `/folder/subfolder`)
 - 🚀 **Single Binary**: Easy deployment with embedded frontend assets
 - 🔒 **Security**: Path traversal protection and secure file operations
+- 🔐 **JWT Authentication**: Optional JWT-based authentication with directory restrictions
 
 ## Installation
 
@@ -57,6 +58,7 @@ Options:
 - `--listen`: IP address and port to listen on (default: `127.0.0.1:3000`)
 - `--dir`: Directory to expose for web management (default: `./`)
 - `--quota`: Maximum directory size with units (MB/GB/TB, default: no limit)
+- `--jwt`: JWT secret for authentication (minimum 32 characters)
 
 ### Examples
 
@@ -69,6 +71,59 @@ Options:
 
 # Multiple options
 ./dendrite --listen 192.168.1.100:3000 --dir /shared --quota 500MB
+
+# Enable JWT authentication
+./dendrite --jwt "your-secret-key-at-least-32-characters-long" --dir /var/www/files
+```
+
+### JWT Authentication
+
+When JWT authentication is enabled with the `--jwt` flag, Dendrite requires a valid JWT token to access the file manager. This allows you to:
+
+- Restrict users to specific subdirectories
+- Set per-user quota limits
+- Control session expiry
+
+To use JWT authentication:
+
+1. Start Dendrite with a JWT secret:
+   ```bash
+   ./dendrite --jwt "your-secret-key-at-least-32-characters-long" --dir /var/www/files
+   ```
+
+2. Create a JWT token with the following claims:
+   ```json
+   {
+     "dir": "users/john_doe/documents",
+     "quota": "100MB",
+     "expires": "2025-12-31T23:59:59Z"
+   }
+   ```
+   - `dir`: Restricts access to this subdirectory
+   - `quota`: Sets a user-specific quota limit
+   - `expires`: Controls when the session expires
+   
+   You can create test tokens using [jwt.io](https://jwt.io) - paste your secret in the signature section and the claims in the payload.
+
+3. Access Dendrite with the JWT token in the URL hash:
+   ```
+   https://example.com/dendrite/#<jwt-token>
+   ```
+
+The JWT token is passed as a URL hash fragment for security - it won't be sent to the server or appear in logs.
+
+#### Testing with curl
+
+Once authenticated, you can test API endpoints:
+```bash
+# Set your JWT token
+JWT="your-jwt-token-here"
+
+# List files
+curl -H "Authorization: Bearer $JWT" http://localhost:3000/api/files
+
+# Get quota info
+curl -H "Authorization: Bearer $JWT" http://localhost:3000/api/quota
 ```
 
 ## Keyboard Shortcuts

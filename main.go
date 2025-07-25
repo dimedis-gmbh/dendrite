@@ -20,6 +20,7 @@ func main() {
 	flag.StringVar(&cfg.Listen, "listen", "127.0.0.1:3000", "IP address and port to listen on")
 	flag.StringVar(&cfg.Dir, "dir", "./", "Directory to expose for web management")
 	flag.StringVar(&cfg.Quota, "quota", "", "Maximum directory size (e.g., 1GB, 500MB)")
+	flag.StringVar(&cfg.JWTSecret, "jwt", "", "JWT secret for authentication (minimum 32 characters)")
 	flag.Parse()
 
 	// Validate and resolve directory path
@@ -35,6 +36,11 @@ func main() {
 
 	cfg.Dir = absDir
 
+	// Validate JWT secret if provided
+	if cfg.JWTSecret != "" && len(cfg.JWTSecret) < 32 {
+		log.Fatalf("JWT secret must be at least 32 characters (256 bits) for security")
+	}
+
 	// Parse quota if provided
 	if cfg.Quota != "" {
 		if err := config.ParseQuota(&cfg); err != nil {
@@ -46,6 +52,9 @@ func main() {
 	fmt.Printf("Managing directory: %s\n", cfg.Dir)
 	if cfg.QuotaBytes > 0 {
 		fmt.Printf("Quota limit: %s (%d bytes)\n", cfg.Quota, cfg.QuotaBytes)
+	}
+	if cfg.JWTSecret != "" {
+		fmt.Printf("JWT authentication enabled\n")
 	}
 
 	srv := server.New(&cfg)
