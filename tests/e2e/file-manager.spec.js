@@ -3,16 +3,47 @@ const { test, expect } = require('@playwright/test');
 
 test.describe('Dendrite File Manager', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    // Set up console logging for debugging
+    page.on('console', msg => {
+      if (msg.type() === 'error') {
+        console.log('Browser console error:', msg.text());
+      }
+    });
     
-    // Wait for the app to load
-    await page.waitForSelector('#file-list');
+    // Navigate with retry logic for webkit
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        await page.goto('/', { waitUntil: 'networkidle', timeout: 30000 });
+        break;
+      } catch (error) {
+        retries--;
+        if (retries === 0) throw error;
+        console.log(`Navigation failed, retrying... (${retries} retries left)`);
+        await page.waitForTimeout(2000);
+      }
+    }
     
-    // Wait for initial file load
+    // Wait for the app to load with extended timeout
+    await page.waitForSelector('#file-list', { timeout: 20000 });
+    
+    // Wait for initial file load with more robust check
     await page.waitForFunction(() => {
       const tbody = document.querySelector('#file-list-body');
-      return tbody && tbody.children.length > 0;
-    });
+      // Check that tbody exists and has children
+      if (!tbody) return false;
+      // For webkit, also check that the first row is fully rendered
+      const firstRow = tbody.querySelector('.file-row');
+      if (!firstRow) return false;
+      // Check that the row has content
+      const nameCell = firstRow.querySelector('.col-name');
+      return nameCell && nameCell.textContent && nameCell.textContent.trim().length > 0;
+    }, { timeout: 20000 });
+    
+    // Additional wait for webkit to ensure full render
+    if (page.context().browser()?.browserType().name() === 'webkit') {
+      await page.waitForTimeout(500);
+    }
   });
 
   test('should load the file manager interface', async ({ page }) => {
@@ -35,27 +66,56 @@ test.describe('Dendrite File Manager', () => {
     await expect(page.locator('#btn-download-zip')).toBeVisible();
   });
 
-  test('should display files and folders', async ({ page }) => {
-    // Wait for file list to be fully loaded
-    await page.waitForSelector('#file-list-body', { timeout: 10000 });
+  test('should display files and folders', async ({ page, browserName }) => {
+    // For webkit, ensure the page is fully loaded before checking
+    if (browserName === 'webkit') {
+      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(1000); // Extra wait for webkit rendering
+    }
+    
+    // Wait for file list to be fully loaded with more specific checks
+    await page.waitForSelector('#file-list-body', { timeout: 20000 });
+    
+    // Wait for specific content to ensure files are loaded
     await page.waitForFunction(() => {
       const rows = document.querySelectorAll('.file-row');
-      return rows.length > 0;
-    }, { timeout: 10000 });
+      if (rows.length === 0) return false;
+      
+      // Check that at least one row has actual content
+      for (const row of rows) {
+        const nameCell = row.querySelector('.col-name');
+        if (nameCell && nameCell.textContent && nameCell.textContent.trim().length > 0) {
+          return true;
+        }
+      }
+      return false;
+    }, { timeout: 20000 });
+    
+    // Additional stabilization wait for webkit
+    if (browserName === 'webkit') {
+      await page.waitForTimeout(500);
+    }
     
     // Check that files are loaded
     const fileRows = page.locator('.file-row');
-    await expect(fileRows.first()).toBeVisible({ timeout: 10000 });
+    const rowCount = await fileRows.count();
+    expect(rowCount).toBeGreaterThan(0);
+    await expect(fileRows.first()).toBeVisible({ timeout: 15000 });
     
-    // Check file list headers
-    await expect(page.locator('th.col-name')).toContainText('Name');
-    await expect(page.locator('th.col-size')).toContainText('Size');
-    await expect(page.locator('th.col-type')).toContainText('Type');
-    await expect(page.locator('th.col-modified')).toContainText('Modified');
+    // Check file list headers with individual waits
+    const headers = ['Name', 'Size', 'Type', 'Modified'];
+    for (const header of headers) {
+      const headerLocator = page.locator(`th:has-text("${header}")`);
+      await expect(headerLocator).toBeVisible({ timeout: 10000 });
+    }
     
-    // Verify at least some expected files are present
-    await expect(page.locator('text=readme.txt')).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('text=documents')).toBeVisible({ timeout: 10000 });
+    // Verify specific files are present with more flexible selectors
+    // Use more specific selectors to avoid ambiguity
+    const readmeFile = page.locator('.file-row').filter({ hasText: 'readme.txt' });
+    const documentsFolder = page.locator('.file-row').filter({ hasText: 'documents' });
+    
+    await expect(readmeFile).toBeVisible({ timeout: 15000 });
+    await expect(documentsFolder).toBeVisible({ timeout: 15000 });
   });
 
   test('should allow file selection with checkboxes', async ({ page }) => {

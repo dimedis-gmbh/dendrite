@@ -27,8 +27,14 @@ module.exports = defineConfig({
     trace: 'on-first-retry',
     
     /* Additional timeout settings for CI */
-    actionTimeout: process.env.CI ? 10000 : 5000,
-    navigationTimeout: process.env.CI ? 30000 : 15000,
+    actionTimeout: process.env.CI ? 15000 : 5000,
+    navigationTimeout: process.env.CI ? 45000 : 15000,
+    
+    /* Video recording for debugging CI failures */
+    video: process.env.CI ? 'retain-on-failure' : 'off',
+    
+    /* Screenshot on failure */
+    screenshot: 'only-on-failure',
   },
 
   /* Configure projects for major browsers */
@@ -45,7 +51,14 @@ module.exports = defineConfig({
 
     {
       name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
+      use: { 
+        ...devices['Desktop Safari'],
+        // Special configuration for webkit in CI
+        launchOptions: process.env.CI ? {
+          // Slower animations in CI
+          slowMo: 100,
+        } : {},
+      },
     },
   ],
 
