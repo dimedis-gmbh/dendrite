@@ -397,6 +397,34 @@ body {
     word-break: break-all;
 }
 
+/* Session info */
+#session-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #555;
+}
+
+#session-info i {
+    color: #666;
+}
+
+#session-info .session-alert {
+    color: #ff6b6b;
+    margin-right: 5px;
+    animation: blink 1s ease-in-out infinite;
+}
+
+@keyframes blink {
+    0%, 50%, 100% {
+        opacity: 1;
+    }
+    25%, 75% {
+        opacity: 0.3;
+    }
+}
+
 /* Utilities */
 .hidden {
     display: none !important;
