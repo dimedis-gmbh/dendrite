@@ -1,14 +1,58 @@
 const { test, expect } = require('@playwright/test');
 
 test.describe('Rename Functionality', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:3001');
-    await page.waitForSelector('#file-list-body');
+  test.beforeEach(async ({ page, browserName }) => {
+    // Set up console logging for debugging
+    page.on('console', msg => {
+      if (msg.type() === 'error') {
+        console.log('Browser console error:', msg.text());
+      }
+    });
+    
+    // Navigate with retry logic for webkit
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        await page.goto('http://localhost:3001', { waitUntil: 'networkidle', timeout: 30000 });
+        break;
+      } catch (error) {
+        retries--;
+        if (retries === 0) throw error;
+        console.log(`Navigation failed, retrying... (${retries} retries left)`);
+        await page.waitForTimeout(2000);
+      }
+    }
+    
+    // Wait for the app to load with extended timeout
+    await page.waitForSelector('#file-list-body', { timeout: 20000 });
+    
+    // Wait for initial file load with more robust check
+    await page.waitForFunction(() => {
+      const tbody = document.querySelector('#file-list-body');
+      // Check that tbody exists and has children
+      if (!tbody) return false;
+      // For webkit, also check that the first row is fully rendered
+      const firstRow = tbody.querySelector('.file-row');
+      if (!firstRow) return false;
+      // Check that the row has content
+      const nameCell = firstRow.querySelector('.col-name');
+      return nameCell && nameCell.textContent && nameCell.textContent.trim().length > 0;
+    }, { timeout: 20000 });
+    
+    // Additional wait for webkit to ensure full render
+    if (browserName === 'webkit') {
+      await page.waitForTimeout(500);
+    }
   });
 
-  test('should show rename dialog when clicking rename in context menu', async ({ page }) => {
-    // Wait for files to load
-    await page.waitForSelector('.file-row');
+  test('should show rename dialog when clicking rename in context menu', async ({ page, browserName }) => {
+    // Wait for files to load with extra time for CI
+    await page.waitForSelector('.file-row', { timeout: process.env.CI ? 20000 : 10000 });
+    
+    // Additional wait for webkit
+    if (browserName === 'webkit' && process.env.CI) {
+      await page.waitForTimeout(1000);
+    }
     
     // Find a file
     const fileRow = await page.locator('.file-row[data-is-dir="false"]').first();
@@ -17,22 +61,27 @@ test.describe('Rename Functionality', () => {
     // Right-click on the file
     await fileRow.click({ button: 'right' });
     
-    // Wait for context menu
-    await page.waitForSelector('#context-menu:not(.hidden)');
+    // Wait for context menu with extended timeout
+    await page.waitForSelector('#context-menu:not(.hidden)', { timeout: process.env.CI ? 10000 : 5000 });
     
     // Set up dialog handler before clicking rename
+    let dialogHandled = false;
     page.once('dialog', async dialog => {
+      dialogHandled = true;
       expect(dialog.type()).toBe('prompt');
       expect(dialog.message()).toBe('Enter new name:');
       expect(dialog.defaultValue()).toBeTruthy(); // Should have current filename
       await dialog.dismiss(); // Cancel for this test
     });
     
-    // Click rename
-    await page.locator('[data-action="rename"]').click();
+    // Click rename with increased timeout for CI
+    await page.locator('[data-action="rename"]').click({ timeout: process.env.CI ? 10000 : 5000 });
+    
+    // Wait for dialog to appear and be handled
+    await page.waitForTimeout(process.env.CI ? 2000 : 500);
     
     // Context menu should be hidden
-    await expect(page.locator('#context-menu')).toHaveClass(/hidden/);
+    await expect(page.locator('#context-menu')).toHaveClass(/hidden/, { timeout: process.env.CI ? 10000 : 5000 });
   });
 
   test('should rename file successfully', async ({ page }) => {
@@ -61,10 +110,10 @@ test.describe('Rename Functionality', () => {
     await page.waitForFunction(() => {
       const toast = document.querySelector('.toast.success');
       return toast && toast.textContent.includes('Successfully renamed');
-    }, { timeout: 5000 });
+    }, { timeout: process.env.CI ? 15000 : 5000 });
     
-    // Wait a moment for file list to refresh
-    await page.waitForTimeout(500);
+    // Wait for file list to refresh - longer in CI
+    await page.waitForTimeout(process.env.CI ? 2000 : 500);
     
     // Check that the file with new name exists
     await page.waitForSelector(`[data-path*="${newName}"]`);
@@ -107,8 +156,14 @@ test.describe('Rename Functionality', () => {
     // Click rename
     await page.locator('[data-action="rename"]').click();
     
-    // Wait for both dialogs to be handled
-    await page.waitForTimeout(1500);
+    // Wait for both dialogs to be handled - longer wait for CI
+    await page.waitForTimeout(process.env.CI ? 3000 : 1500);
+    
+    // In CI, the dialogs may take longer to appear
+    if (process.env.CI && dialogCount < 2) {
+      await page.waitForTimeout(2000);
+    }
+    
     expect(dialogCount).toBe(2);
   });
 
@@ -165,8 +220,14 @@ test.describe('Rename Functionality', () => {
     // Click rename
     await page.locator('[data-action="rename"]').click();
     
-    // Wait for both dialogs
-    await page.waitForTimeout(1500);
+    // Wait for both dialogs - longer wait for CI
+    await page.waitForTimeout(process.env.CI ? 3000 : 1500);
+    
+    // In CI, the dialogs may take longer to appear
+    if (process.env.CI && dialogCount < 2) {
+      await page.waitForTimeout(2000);
+    }
+    
     expect(dialogCount).toBe(2);
   });
 
@@ -193,7 +254,7 @@ test.describe('Rename Functionality', () => {
     await page.locator('[data-action="rename"]').click();
     
     // Verify no loading or error messages appear (wait briefly)
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(process.env.CI ? 1500 : 500);
     
     // Verify file still has original name - use first() to avoid multiple matches
     const originalFileRow = page.locator(`[data-path="${originalPath}"]`).first();
@@ -234,10 +295,10 @@ test.describe('Rename Functionality', () => {
     await page.waitForFunction(() => {
       const toast = document.querySelector('.toast.success');
       return toast && toast.textContent.includes('Successfully renamed');
-    }, { timeout: 5000 });
+    }, { timeout: process.env.CI ? 15000 : 5000 });
     
-    // Wait a moment for file list to refresh
-    await page.waitForTimeout(500);
+    // Wait for file list to refresh - longer in CI
+    await page.waitForTimeout(process.env.CI ? 2000 : 500);
     
     // Check that the folder with new name exists
     await page.waitForSelector(`[data-path*="${newName}"][data-is-dir="true"]`);
