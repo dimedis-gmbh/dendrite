@@ -716,6 +716,8 @@ class UI {
     
     updateContextMenuItems() {
         const openItem = document.querySelector('[data-action="open"]');
+        const renameItem = document.querySelector('[data-action="rename"]');
+        const propertiesItem = document.querySelector('[data-action="properties"]');
         const selectedPaths = Array.from(this.selectedFiles);
         
         // Reset all items to enabled state
@@ -732,6 +734,9 @@ class UI {
         } else if (selectedPaths.length > 1) {
             // Disable "Open" for multiple selections
             openItem.classList.add('disabled');
+            // Also disable rename and properties for multiple selections
+            renameItem.classList.add('disabled');
+            propertiesItem.classList.add('disabled');
         }
     }
     
@@ -1021,6 +1026,14 @@ class UI {
                 }
                 break;
                 
+            case 'F2':
+                if (this.selectedFiles.size === 1) {
+                    e.preventDefault();
+                    const selectedPath = Array.from(this.selectedFiles)[0];
+                    this.renameFile(selectedPath);
+                }
+                break;
+                
             case 'F5':
                 e.preventDefault();
                 this.refresh();
@@ -1141,8 +1154,54 @@ class UI {
         }
     }
     
-    renameFile(path) {
-        console.log('Rename file - to be implemented');
+    async renameFile(path) {
+        const currentName = getFileName(path);
+        const newName = prompt('Enter new name:', currentName);
+        
+        if (!newName || newName.trim() === '') {
+            return; // User cancelled or entered empty name
+        }
+        
+        const trimmedName = newName.trim();
+        
+        // Validation: prevent path changes (no slashes allowed)
+        if (trimmedName.includes('/') || trimmedName.includes('\\')) {
+            showError('File/folder name cannot contain / or \\ characters.');
+            return;
+        }
+        
+        // Check if name actually changed
+        if (trimmedName === currentName) {
+            return; // No change
+        }
+        
+        try {
+            showLoading();
+            
+            // Construct new path (same directory, new name)
+            const parentPath = getParentPath(path);
+            const newPath = parentPath === '/' ? `/${trimmedName}` : `${parentPath}/${trimmedName}`;
+            
+            // Check if destination already exists
+            const files = await this.api.listFiles(parentPath);
+            const nameExists = files.some(file => file.name === trimmedName);
+            
+            if (nameExists) {
+                showError(`A file or folder with the name "${trimmedName}" already exists.`);
+                return;
+            }
+            
+            // Perform the rename (move operation)
+            await this.api.moveFile(path, newPath);
+            
+            showSuccess(`Successfully renamed to "${trimmedName}"`);
+            await this.refresh();
+            
+        } catch (error) {
+            showError(`Failed to rename: ${error.message}`);
+        } finally {
+            hideLoading();
+        }
     }
     
     async showProperties(path) {

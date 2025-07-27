@@ -16,6 +16,8 @@ module.exports = defineConfig({
   workers: process.env.CI ? 1 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
+  /* Increase timeout for CI environments */
+  timeout: process.env.CI ? 60000 : 30000,
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
@@ -23,6 +25,16 @@ module.exports = defineConfig({
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
+    
+    /* Additional timeout settings for CI */
+    actionTimeout: process.env.CI ? 15000 : 5000,
+    navigationTimeout: process.env.CI ? 45000 : 15000,
+    
+    /* Video recording for debugging CI failures */
+    video: process.env.CI ? 'retain-on-failure' : 'off',
+    
+    /* Screenshot on failure */
+    screenshot: 'only-on-failure',
   },
 
   /* Configure projects for major browsers */
@@ -39,7 +51,14 @@ module.exports = defineConfig({
 
     {
       name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
+      use: { 
+        ...devices['Desktop Safari'],
+        // Special configuration for webkit in CI
+        launchOptions: process.env.CI ? {
+          // Slower animations in CI
+          slowMo: 100,
+        } : {},
+      },
     },
   ],
 
