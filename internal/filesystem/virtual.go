@@ -37,13 +37,28 @@ func (vfs *VirtualFS) ResolvePath(virtualPath string) (physicalPath string, foun
 	// Normalize the virtual path
 	virtualPath = path.Clean("/" + strings.TrimPrefix(virtualPath, "/"))
 
-	// Special case for root
+	// Special case for root - check if we have a direct mapping
 	if virtualPath == "/" {
+		for _, dir := range vfs.Directories {
+			if dir.Virtual == "/" {
+				return dir.Source, true
+			}
+		}
 		return "", true // Root directory exists but has no physical path
 	}
 
 	// Find the matching directory mapping
 	for _, dir := range vfs.Directories {
+		// For root mapping ("/"), check if the path starts with it
+		if dir.Virtual == "/" {
+			// Root maps to everything
+			relativePath := strings.TrimPrefix(virtualPath, "/")
+			if relativePath == "" {
+				return dir.Source, true
+			}
+			return filepath.Join(dir.Source, relativePath), true
+		}
+		
 		if virtualPath == dir.Virtual || strings.HasPrefix(virtualPath, dir.Virtual+"/") {
 			// Calculate the relative path within the virtual directory
 			relativePath := strings.TrimPrefix(virtualPath, dir.Virtual)
@@ -120,7 +135,7 @@ func (vfs *VirtualFS) IsVirtualRoot(virtualPath string) bool {
 	return virtualPath == "/"
 }
 
-// ValidateAgainstServerConfig checks if JWT directories are allowed by server config
+// ValidateJWTDirectories checks if JWT directories are allowed by server config
 func ValidateJWTDirectories(jwtDirs []config.DirMapping, serverDirs []config.DirMapping) error {
 	// Create a map of allowed source directories from server config
 	allowedSources := make(map[string]string) // source -> virtual

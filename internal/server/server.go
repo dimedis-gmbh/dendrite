@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -34,9 +33,20 @@ func New(cfg *config.Config) *Server {
 		panic("Failed to load embedded web assets: " + err.Error())
 	}
 
+	// In JWT mode, we don't set up any directories - they come from the JWT
+	var fs *filesystem.Manager
+	if cfg.JWTSecret != "" {
+		// Create empty filesystem manager for JWT mode
+		// Actual directories will be created per-request based on JWT claims
+		fs = nil
+	} else {
+		// Non-JWT mode: use configured directories
+		fs = filesystem.New(cfg)
+	}
+
 	s := &Server{
 		Config: cfg,
-		FS:     filesystem.New(cfg),
+		FS:     fs,
 		Router: mux.NewRouter(),
 		webFS:  webFS,
 	}
@@ -78,37 +88,69 @@ func (s *Server) setupRoutes() {
 }
 
 // getFilesystemForRequest returns a filesystem manager with JWT restrictions if applicable
-func (s *Server) getFilesystemForRequest(r *http.Request) *filesystem.Manager {
+// Returns nil with error if JWT validation fails
+func (s *Server) getFilesystemForRequest(r *http.Request) (*filesystem.Manager, error) {
 	// If JWT authentication is not enabled, return the default filesystem manager
 	if s.Config.JWTSecret == "" {
-		return s.FS
+		return s.FS, nil
 	}
 	
-	// Get JWT claims from context
+	// JWT is enabled - NEVER fall back to default filesystem
 	claims, ok := auth.GetClaimsFromContext(r.Context())
-	if !ok || len(claims.Directories) == 0 {
-		// No valid claims or no directory restrictions, return default
-		return s.FS
+	if !ok {
+		return nil, fmt.Errorf("no valid JWT claims found")
 	}
 	
-	// Validate JWT directories against server config
+	if len(claims.Directories) == 0 {
+		return nil, fmt.Errorf("JWT token contains no directory permissions")
+	}
+	
+	// In JWT mode, directories are relative to base_dir
 	jwtDirs := make([]config.DirMapping, len(claims.Directories))
 	for i, dir := range claims.Directories {
+		// Validate directory fields are not empty
+		if strings.TrimSpace(dir.Source) == "" {
+			return nil, fmt.Errorf("directory mapping has empty 'source' field")
+		}
+		if strings.TrimSpace(dir.Virtual) == "" {
+			return nil, fmt.Errorf("directory mapping has empty 'virtual' field")
+		}
+		
+		// Resolve relative paths against base directory
+		sourcePath := filepath.Join(s.Config.BaseDir, dir.Source)
+		
+		// Validate that the resolved path is still within base_dir
+		absSource, err := filepath.Abs(sourcePath)
+		if err != nil {
+			return nil, fmt.Errorf("invalid source path: %w", err)
+		}
+		
+		// IMPORTANT: Check escape before checking existence
+		// This ensures we don't leak information about paths outside base_dir
+		if !strings.HasPrefix(absSource, s.Config.BaseDir) {
+			return nil, fmt.Errorf("directory path escapes base directory: %s", dir.Source)
+		}
+		
+		// Check if the directory exists
+		info, err := os.Stat(absSource)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil, fmt.Errorf("directory not found: %s", dir.Virtual)
+			}
+			return nil, fmt.Errorf("cannot access directory: %w", err)
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("path is not a directory: %s", dir.Virtual)
+		}
+		
 		jwtDirs[i] = config.DirMapping{
-			Source:  dir.Source,
+			Source:  absSource,
 			Virtual: dir.Virtual,
 		}
 	}
 	
-	if err := filesystem.ValidateJWTDirectories(jwtDirs, s.Config.Directories); err != nil {
-		// JWT directories not allowed by server config, return default
-		// In production, you might want to return an error instead
-		log.Printf("JWT directory validation failed: %v", err)
-		return s.FS
-	}
-	
 	// Create a new filesystem manager with JWT directory restrictions
-	return filesystem.NewWithRestriction(s.Config, jwtDirs)
+	return filesystem.NewWithRestriction(s.Config, jwtDirs), nil
 }
 
 func (s *Server) serveIndex(w http.ResponseWriter, _ *http.Request) {
@@ -132,17 +174,41 @@ func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get filesystem manager with JWT restrictions if applicable
-	fs := s.getFilesystemForRequest(r)
+	fs, err := s.getFilesystemForRequest(r)
+	if err != nil {
+		// More specific error handling
+		if strings.Contains(err.Error(), "no valid JWT claims") {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+		} else if strings.Contains(err.Error(), "not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else if strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field") {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusForbidden)
+		}
+		return
+	}
+	
+	// Check if filesystem manager is nil
+	if fs == nil {
+		http.Error(w, "Filesystem manager not initialized", http.StatusInternalServerError)
+		return
+	}
 	
 	files, err := fs.ListFiles(path)
 	if err != nil {
 		// Check if it's a "not found" error
-		if strings.Contains(err.Error(), "directory not found") {
+		if strings.Contains(err.Error(), "not found") {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	// Ensure we always return an array, never null
+	if files == nil {
+		files = []filesystem.FileInfo{}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -181,7 +247,20 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	// Get filesystem manager with JWT restrictions if applicable
-	fs := s.getFilesystemForRequest(r)
+	fs, err := s.getFilesystemForRequest(r)
+	if err != nil {
+		// More specific error handling
+		if strings.Contains(err.Error(), "no valid JWT claims") {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+		} else if strings.Contains(err.Error(), "not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else if strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field") {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusForbidden)
+		}
+		return
+	}
 	
 	result, err := fs.UploadFile(targetPath, header.Filename, file, header.Size)
 	if err != nil {
@@ -200,7 +279,20 @@ func (s *Server) getFile(w http.ResponseWriter, r *http.Request) {
 	path := vars["path"]
 
 	// Get filesystem manager with JWT restrictions if applicable
-	fs := s.getFilesystemForRequest(r)
+	fs, err := s.getFilesystemForRequest(r)
+	if err != nil {
+		// More specific error handling
+		if strings.Contains(err.Error(), "no valid JWT claims") {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+		} else if strings.Contains(err.Error(), "not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else if strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field") {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusForbidden)
+		}
+		return
+	}
 	
 	filePath, err := fs.GetFilePath(path)
 	if err != nil {
@@ -232,9 +324,22 @@ func (s *Server) deleteFile(w http.ResponseWriter, r *http.Request) {
 	path := vars["path"]
 
 	// Get filesystem manager with JWT restrictions if applicable
-	fs := s.getFilesystemForRequest(r)
+	fs, err := s.getFilesystemForRequest(r)
+	if err != nil {
+		// More specific error handling
+		if strings.Contains(err.Error(), "no valid JWT claims") {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+		} else if strings.Contains(err.Error(), "not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else if strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field") {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusForbidden)
+		}
+		return
+	}
 	
-	err := fs.DeleteFile(path)
+	err = fs.DeleteFile(path)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -260,9 +365,22 @@ func (s *Server) moveFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get filesystem manager with JWT restrictions if applicable
-	fs := s.getFilesystemForRequest(r)
+	fs, err := s.getFilesystemForRequest(r)
+	if err != nil {
+		// More specific error handling
+		if strings.Contains(err.Error(), "no valid JWT claims") {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+		} else if strings.Contains(err.Error(), "not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else if strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field") {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusForbidden)
+		}
+		return
+	}
 	
-	err := fs.MoveFile(sourcePath, req.DestPath)
+	err = fs.MoveFile(sourcePath, req.DestPath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -288,9 +406,22 @@ func (s *Server) copyFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get filesystem manager with JWT restrictions if applicable
-	fs := s.getFilesystemForRequest(r)
+	fs, err := s.getFilesystemForRequest(r)
+	if err != nil {
+		// More specific error handling
+		if strings.Contains(err.Error(), "no valid JWT claims") {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+		} else if strings.Contains(err.Error(), "not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else if strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field") {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusForbidden)
+		}
+		return
+	}
 	
-	err := fs.CopyFile(sourcePath, req.DestPath)
+	err = fs.CopyFile(sourcePath, req.DestPath)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -307,7 +438,20 @@ func (s *Server) statFile(w http.ResponseWriter, r *http.Request) {
 	path := vars["path"]
 
 	// Get filesystem manager with JWT restrictions if applicable
-	fs := s.getFilesystemForRequest(r)
+	fs, err := s.getFilesystemForRequest(r)
+	if err != nil {
+		// More specific error handling
+		if strings.Contains(err.Error(), "no valid JWT claims") {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+		} else if strings.Contains(err.Error(), "not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else if strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field") {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusForbidden)
+		}
+		return
+	}
 	
 	stat, err := fs.StatFile(path)
 	if err != nil {
@@ -347,9 +491,22 @@ func (s *Server) downloadZip(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", zipName))
 
 	// Get filesystem manager with JWT restrictions if applicable
-	fs := s.getFilesystemForRequest(r)
+	fs, err := s.getFilesystemForRequest(r)
+	if err != nil {
+		// More specific error handling
+		if strings.Contains(err.Error(), "no valid JWT claims") {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+		} else if strings.Contains(err.Error(), "not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else if strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field") {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusForbidden)
+		}
+		return
+	}
 	
-	err := fs.CreateZip(w, req.Paths)
+	err = fs.CreateZip(w, req.Paths)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -358,7 +515,20 @@ func (s *Server) downloadZip(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getQuotaInfo(w http.ResponseWriter, r *http.Request) {
 	// Get filesystem manager with JWT restrictions if applicable
-	fs := s.getFilesystemForRequest(r)
+	fs, err := s.getFilesystemForRequest(r)
+	if err != nil {
+		// More specific error handling
+		if strings.Contains(err.Error(), "no valid JWT claims") {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+		} else if strings.Contains(err.Error(), "not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else if strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field") {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusForbidden)
+		}
+		return
+	}
 	
 	info, err := fs.GetQuotaInfo()
 	if err != nil {
@@ -388,9 +558,22 @@ func (s *Server) createFolder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get filesystem manager with JWT restrictions if applicable
-	fs := s.getFilesystemForRequest(r)
+	fs, err := s.getFilesystemForRequest(r)
+	if err != nil {
+		// More specific error handling
+		if strings.Contains(err.Error(), "no valid JWT claims") {
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+		} else if strings.Contains(err.Error(), "not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else if strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field") {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusForbidden)
+		}
+		return
+	}
 	
-	err := fs.CreateFolder(req.Path)
+	err = fs.CreateFolder(req.Path)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

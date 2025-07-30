@@ -18,13 +18,19 @@ type DirMapping struct {
 type MainConfig struct {
 	Listen    string `mapstructure:"listen"`
 	Quota     string `mapstructure:"quota"`
+}
+
+// JWTAuthConfig holds JWT authentication configuration
+type JWTAuthConfig struct {
 	JWTSecret string `mapstructure:"jwt_secret"`
+	BaseDir   string `mapstructure:"base_dir"`
 }
 
 // Config holds the application configuration
 type Config struct {
-	Main        MainConfig   `mapstructure:"main"`
-	Directories []DirMapping `mapstructure:"directories"`
+	Main        MainConfig     `mapstructure:"main"`
+	JWTAuth     JWTAuthConfig  `mapstructure:"jwt_auth"`
+	Directories []DirMapping   `mapstructure:"directories"`
 	
 	// Computed fields (not from config file)
 	QuotaBytes int64
@@ -33,6 +39,7 @@ type Config struct {
 	Listen    string
 	Quota     string
 	JWTSecret string
+	BaseDir   string
 }
 
 // ParseQuota parses the quota string and sets QuotaBytes

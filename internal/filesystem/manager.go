@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"log"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -98,7 +97,14 @@ func (m *Manager) resolvePath(virtualPath string) (string, error) {
 func (m *Manager) ListFiles(virtualPath string) ([]FileInfo, error) {
 	// Handle virtual root specially
 	if m.VirtualFS.IsVirtualRoot(virtualPath) {
-		return m.listVirtualRoot()
+		// Check if we have a single directory mapping to root
+		if len(m.Directories) == 1 && m.Directories[0].Virtual == "/" {
+			// The root maps directly to a physical directory, list its contents
+			virtualPath = "/"
+		} else {
+			// Multiple mappings or non-root mappings, show virtual directories
+			return m.listVirtualRoot()
+		}
 	}
 
 	// Resolve virtual path to physical path
@@ -110,7 +116,7 @@ func (m *Manager) ListFiles(virtualPath string) ([]FileInfo, error) {
 	entries, err := os.ReadDir(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("directory not found: %s", path)
+			return nil, fmt.Errorf("directory not found: %s", virtualPath)
 		}
 		return nil, fmt.Errorf("failed to read directory: %w", err)
 	}
@@ -281,39 +287,46 @@ func (m *Manager) calculateDirectorySize(path string) (int64, error) {
 	return size, err
 }
 
-// UploadFile uploads a file to the specified path with quota checking
-func (m *Manager) UploadFile(targetPath, filename string, file io.Reader, size int64) (
+// UploadFile uploads a file to the specified virtual path with quota checking
+func (m *Manager) UploadFile(virtualTargetPath, filename string, file io.Reader, size int64) (
 	result *UploadResult, err error) {
 	// Check quota before upload
 	if m.Config.QuotaBytes > 0 {
-		currentUsed, err := m.calculateDirectorySize(m.getBaseDir())
+		quotaInfo, err := m.GetQuotaInfo()
 		if err != nil {
 			return nil, fmt.Errorf("failed to calculate current usage: %w", err)
 		}
 
-		if currentUsed+size > m.Config.QuotaBytes {
+		if quotaInfo.Used+size > m.Config.QuotaBytes {
 			return nil, fmt.Errorf("upload would exceed quota limit (current: %s, file: %s, limit: %s)",
-				format.FileSize(currentUsed),
+				format.FileSize(quotaInfo.Used),
 				format.FileSize(size),
 				format.FileSize(m.Config.QuotaBytes))
 		}
 	}
 
-	fullPath := filepath.Join(m.getBaseDir(), targetPath, filename)
+	// Combine virtual path with filename
+	virtualFullPath := filepath.ToSlash(filepath.Join(virtualTargetPath, filename))
+	
+	// Resolve virtual path to physical path
+	physicalPath, err := m.resolvePath(virtualFullPath)
+	if err != nil {
+		return nil, fmt.Errorf("invalid virtual path: %w", err)
+	}
 
 	// Security check
-	if !m.isPathSafe(fullPath) {
+	if !m.isPathSafe(physicalPath) {
 		return nil, fmt.Errorf("access denied: path outside managed directory")
 	}
 
 	// Create directory if it doesn't exist
-	dir := filepath.Dir(fullPath)
+	dir := filepath.Dir(physicalPath)
 	if err := os.MkdirAll(dir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
 
 	// Create the file with secure permissions
-	outFile, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640) // #nosec G302,G304
+	outFile, err := os.OpenFile(physicalPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0640) // #nosec G302,G304
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file: %w", err)
 	}
@@ -329,121 +342,140 @@ func (m *Manager) UploadFile(targetPath, filename string, file io.Reader, size i
 		return nil, fmt.Errorf("failed to write file: %w", err)
 	}
 
-	// Use forward slashes for API response paths regardless of platform
-	resultPath := filepath.Join(targetPath, filename)
-	resultPath = strings.ReplaceAll(resultPath, "\\", "/")
-	
 	return &UploadResult{
-		Path:    resultPath,
+		Path:    virtualFullPath,
 		Size:    written,
 		Message: "File uploaded successfully",
 	}, nil
 }
 
-// GetFilePath returns the full filesystem path for a relative path
-func (m *Manager) GetFilePath(path string) (string, error) {
-	fullPath := filepath.Join(m.getBaseDir(), path)
+// GetFilePath returns the full filesystem path for a virtual path
+func (m *Manager) GetFilePath(virtualPath string) (string, error) {
+	physicalPath, err := m.resolvePath(virtualPath)
+	if err != nil {
+		return "", err
+	}
 
-	if !m.isPathSafe(fullPath) {
+	if !m.isPathSafe(physicalPath) {
 		return "", fmt.Errorf("access denied: path outside managed directory")
 	}
 
-	return fullPath, nil
+	return physicalPath, nil
 }
 
 // DeleteFile deletes a file or directory
-func (m *Manager) DeleteFile(path string) error {
-	fullPath := filepath.Join(m.getBaseDir(), path)
+func (m *Manager) DeleteFile(virtualPath string) error {
+	physicalPath, err := m.resolvePath(virtualPath)
+	if err != nil {
+		return err
+	}
 
-	if !m.isPathSafe(fullPath) {
+	if !m.isPathSafe(physicalPath) {
 		return fmt.Errorf("access denied: path outside managed directory")
 	}
 
-	return os.RemoveAll(fullPath)
+	return os.RemoveAll(physicalPath)
 }
 
 // MoveFile moves a file or directory from source to destination
-func (m *Manager) MoveFile(sourcePath, destPath string) error {
-	sourceFullPath := filepath.Join(m.getBaseDir(), sourcePath)
-	destFullPath := filepath.Join(m.getBaseDir(), destPath)
+func (m *Manager) MoveFile(virtualSourcePath, virtualDestPath string) error {
+	sourcePhysicalPath, err := m.resolvePath(virtualSourcePath)
+	if err != nil {
+		return fmt.Errorf("invalid source path: %w", err)
+	}
+	
+	destPhysicalPath, err := m.resolvePath(virtualDestPath)
+	if err != nil {
+		return fmt.Errorf("invalid destination path: %w", err)
+	}
 
-	if !m.isPathSafe(sourceFullPath) || !m.isPathSafe(destFullPath) {
+	if !m.isPathSafe(sourcePhysicalPath) || !m.isPathSafe(destPhysicalPath) {
 		return fmt.Errorf("access denied: path outside managed directory")
 	}
 
 	// Create destination directory if needed
-	destDir := filepath.Dir(destFullPath)
+	destDir := filepath.Dir(destPhysicalPath)
 	if err := os.MkdirAll(destDir, 0750); err != nil {
 		return fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
-	return os.Rename(sourceFullPath, destFullPath)
+	return os.Rename(sourcePhysicalPath, destPhysicalPath)
 }
 
 // CopyFile copies a file or directory from source to destination
-func (m *Manager) CopyFile(sourcePath, destPath string) error {
-	sourceFullPath := filepath.Join(m.getBaseDir(), sourcePath)
-	destFullPath := filepath.Join(m.getBaseDir(), destPath)
+func (m *Manager) CopyFile(virtualSourcePath, virtualDestPath string) error {
+	sourcePhysicalPath, err := m.resolvePath(virtualSourcePath)
+	if err != nil {
+		return fmt.Errorf("invalid source path: %w", err)
+	}
+	
+	destPhysicalPath, err := m.resolvePath(virtualDestPath)
+	if err != nil {
+		return fmt.Errorf("invalid destination path: %w", err)
+	}
 
-	if !m.isPathSafe(sourceFullPath) || !m.isPathSafe(destFullPath) {
+	if !m.isPathSafe(sourcePhysicalPath) || !m.isPathSafe(destPhysicalPath) {
 		return fmt.Errorf("access denied: path outside managed directory")
 	}
 
 	// Check if source exists
-	sourceInfo, err := os.Stat(sourceFullPath)
+	sourceInfo, err := os.Stat(sourcePhysicalPath)
 	if err != nil {
 		return fmt.Errorf("source file not found: %w", err)
 	}
 
 	// Check quota for copy operation
 	if m.Config.QuotaBytes > 0 {
-		currentUsed, err := m.calculateDirectorySize(m.getBaseDir())
+		quotaInfo, err := m.GetQuotaInfo()
 		if err != nil {
 			return fmt.Errorf("failed to calculate current usage: %w", err)
 		}
 
 		copySize := sourceInfo.Size()
 		if sourceInfo.IsDir() {
-			copySize, _ = m.calculateDirectorySize(sourceFullPath)
+			copySize, _ = m.calculateDirectorySize(sourcePhysicalPath)
 		}
 
-		if currentUsed+copySize > m.Config.QuotaBytes {
+		if quotaInfo.Used+copySize > m.Config.QuotaBytes {
 			return fmt.Errorf("copy would exceed quota limit (current: %s, copy size: %s, limit: %s)",
-				format.FileSize(currentUsed),
+				format.FileSize(quotaInfo.Used),
 				format.FileSize(copySize),
 				format.FileSize(m.Config.QuotaBytes))
 		}
 	}
 
 	// Create destination directory
-	destDir := filepath.Dir(destFullPath)
+	destDir := filepath.Dir(destPhysicalPath)
 	if err := os.MkdirAll(destDir, 0750); err != nil {
 		return fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
 	if sourceInfo.IsDir() {
-		return m.copyDirectory(sourceFullPath, destFullPath)
+		return m.copyDirectory(sourcePhysicalPath, destPhysicalPath)
 	}
 
-	return m.copyFile(sourceFullPath, destFullPath)
+	return m.copyFile(sourcePhysicalPath, destPhysicalPath)
 }
 
 // StatFile returns detailed file stat information
-func (m *Manager) StatFile(path string) (*FileStatInfo, error) {
-	fullPath := filepath.Join(m.getBaseDir(), path)
+func (m *Manager) StatFile(virtualPath string) (*FileStatInfo, error) {
+	physicalPath, err := m.resolvePath(virtualPath)
+	if err != nil {
+		return nil, err
+	}
 
-	if !m.isPathSafe(fullPath) {
+	if !m.isPathSafe(physicalPath) {
 		return nil, fmt.Errorf("access denied: path outside managed directory")
 	}
 
-	info, err := os.Stat(fullPath)
+	info, err := os.Stat(physicalPath)
 	if err != nil {
 		return nil, fmt.Errorf("file not found: %w", err)
 	}
 
 	stat := &FileStatInfo{
 		Name:    info.Name(),
-		Path:    path,
+		Path:    virtualPath,
 		Size:    info.Size(),
 		IsDir:   info.IsDir(),
 		Mode:    info.Mode().String(),
@@ -519,8 +551,8 @@ func (m *Manager) copyDirectory(src, dst string) error {
 	})
 }
 
-// CreateZip creates a ZIP archive containing the specified paths
-func (m *Manager) CreateZip(w io.Writer, paths []string) (err error) {
+// CreateZip creates a ZIP archive containing the specified virtual paths
+func (m *Manager) CreateZip(w io.Writer, virtualPaths []string) (err error) {
 	zipWriter := zip.NewWriter(w)
 	defer func() {
 		if cerr := zipWriter.Close(); cerr != nil && err == nil {
@@ -528,26 +560,29 @@ func (m *Manager) CreateZip(w io.Writer, paths []string) (err error) {
 		}
 	}()
 
-	for _, path := range paths {
-		fullPath := filepath.Join(m.getBaseDir(), path)
+	for _, virtualPath := range virtualPaths {
+		physicalPath, err := m.resolvePath(virtualPath)
+		if err != nil {
+			continue // Skip paths that can't be resolved
+		}
 
-		if !m.isPathSafe(fullPath) {
+		if !m.isPathSafe(physicalPath) {
 			continue // Skip unsafe paths
 		}
 
-		info, err := os.Stat(fullPath)
+		info, err := os.Stat(physicalPath)
 		if err != nil {
 			continue // Skip missing files
 		}
 
 		if info.IsDir() {
-			err = m.addDirToZip(zipWriter, fullPath, path)
+			err = m.addDirToZip(zipWriter, physicalPath, virtualPath)
 		} else {
-			err = m.addFileToZip(zipWriter, fullPath, path)
+			err = m.addFileToZip(zipWriter, physicalPath, virtualPath)
 		}
 
 		if err != nil {
-			return fmt.Errorf("failed to add %s to zip: %w", path, err)
+			return fmt.Errorf("failed to add %s to zip: %w", virtualPath, err)
 		}
 	}
 
@@ -618,21 +653,24 @@ func (m *Manager) addDirToZip(zw *zip.Writer, fullPath, relativePath string) err
 	})
 }
 
-// CreateFolder creates a new directory at the specified path
-func (m *Manager) CreateFolder(path string) error {
-	fullPath := filepath.Join(m.getBaseDir(), path)
+// CreateFolder creates a new directory at the specified virtual path
+func (m *Manager) CreateFolder(virtualPath string) error {
+	physicalPath, err := m.resolvePath(virtualPath)
+	if err != nil {
+		return err
+	}
 
-	if !m.isPathSafe(fullPath) {
+	if !m.isPathSafe(physicalPath) {
 		return fmt.Errorf("access denied: path outside managed directory")
 	}
 
 	// Check if directory already exists
-	if _, err := os.Stat(fullPath); err == nil {
+	if _, err := os.Stat(physicalPath); err == nil {
 		return fmt.Errorf("directory already exists")
 	}
 
 	// Create the directory with 755 permissions
-	if err := os.MkdirAll(fullPath, 0750); err != nil {
+	if err := os.MkdirAll(physicalPath, 0750); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
