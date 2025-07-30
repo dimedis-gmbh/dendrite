@@ -1,0 +1,46 @@
+# Dendrite Configuration File
+# Copy this file to dendrite.toml and adjust the settings for your environment
+
+[main]
+# Server listen address and port
+# Can be overridden with --listen flag or DENDRITE_MAIN_LISTEN environment variable
+listen = "127.0.0.1:3000"
+
+# Storage quota limit across all directories
+# Supports units: MB, GB, TB (e.g., "100GB", "1.5TB", "500MB")
+# Leave empty for unlimited storage
+# Can be overridden with --quota flag or DENDRITE_MAIN_QUOTA environment variable
+quota = "100GB"
+
+# JWT authentication secret (optional)
+# Must be at least 32 characters for security
+# Leave empty to disable authentication
+# Can be overridden with --jwt-secret flag or DENDRITE_MAIN_JWT_SECRET environment variable
+jwt_secret = ""
+
+# Directory mappings
+# Each entry creates a virtual folder in the web interface
+# Source must be an absolute path to an existing directory
+# Virtual must start with / and be unique
+# Can be extended with --dir flag (e.g., --dir /path:/virtual)
+
+[[directories]]
+source = "/home/user/documents"
+virtual = "/documents"
+
+[[directories]]
+source = "/home/user/videos"
+virtual = "/videos"
+
+[[directories]]
+source = "/home/user/photos"
+virtual = "/photos"
+
+# Example with more directories:
+# [[directories]]
+# source = "/var/log/myapp"
+# virtual = "/logs"
+#
+# [[directories]]
+# source = "/etc/myapp/config"
+# virtual = "/config"

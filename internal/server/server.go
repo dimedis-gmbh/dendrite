@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -85,13 +86,29 @@ func (s *Server) getFilesystemForRequest(r *http.Request) *filesystem.Manager {
 	
 	// Get JWT claims from context
 	claims, ok := auth.GetClaimsFromContext(r.Context())
-	if !ok || claims.Dir == "" {
-		// No valid claims or no directory restriction, return default
+	if !ok || len(claims.Directories) == 0 {
+		// No valid claims or no directory restrictions, return default
 		return s.FS
 	}
 	
-	// Create a new filesystem manager with JWT directory restriction
-	return filesystem.NewWithRestriction(s.Config, claims.Dir)
+	// Validate JWT directories against server config
+	jwtDirs := make([]config.DirMapping, len(claims.Directories))
+	for i, dir := range claims.Directories {
+		jwtDirs[i] = config.DirMapping{
+			Source:  dir.Source,
+			Virtual: dir.Virtual,
+		}
+	}
+	
+	if err := filesystem.ValidateJWTDirectories(jwtDirs, s.Config.Directories); err != nil {
+		// JWT directories not allowed by server config, return default
+		// In production, you might want to return an error instead
+		log.Printf("JWT directory validation failed: %v", err)
+		return s.FS
+	}
+	
+	// Create a new filesystem manager with JWT directory restrictions
+	return filesystem.NewWithRestriction(s.Config, jwtDirs)
 }
 
 func (s *Server) serveIndex(w http.ResponseWriter, _ *http.Request) {

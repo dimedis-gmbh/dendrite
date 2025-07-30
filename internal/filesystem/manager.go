@@ -8,7 +8,9 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -18,22 +20,26 @@ import (
 
 // Manager handles filesystem operations
 type Manager struct {
-	Config *config.Config
-	RestrictedDir string // JWT-restricted subdirectory (relative to Config.Dir)
+	Config      *config.Config
+	VirtualFS   *VirtualFS
+	Directories []config.DirMapping // JWT-restricted directories (subset of Config.Directories)
 }
 
 // New creates a new filesystem manager
 func New(cfg *config.Config) *Manager {
 	return &Manager{
-		Config: cfg,
+		Config:      cfg,
+		VirtualFS:   NewVirtualFS(cfg.Directories),
+		Directories: cfg.Directories, // Use all configured directories
 	}
 }
 
-// NewWithRestriction creates a new filesystem manager with JWT directory restriction
-func NewWithRestriction(cfg *config.Config, restrictedDir string) *Manager {
+// NewWithRestriction creates a new filesystem manager with JWT directory restrictions
+func NewWithRestriction(cfg *config.Config, jwtDirs []config.DirMapping) *Manager {
 	return &Manager{
-		Config:        cfg,
-		RestrictedDir: restrictedDir,
+		Config:      cfg,
+		VirtualFS:   NewVirtualFS(jwtDirs),
+		Directories: jwtDirs, // Use only JWT-allowed directories
 	}
 }
 
@@ -79,21 +85,26 @@ type UploadResult struct {
 	Message string `json:"message"`
 }
 
-// getBaseDir returns the effective base directory considering JWT restrictions
-func (m *Manager) getBaseDir() string {
-	if m.RestrictedDir != "" {
-		return filepath.Join(m.Config.Dir, m.RestrictedDir)
+// resolvePath converts a virtual path to a physical path
+func (m *Manager) resolvePath(virtualPath string) (string, error) {
+	physicalPath, found := m.VirtualFS.ResolvePath(virtualPath)
+	if !found {
+		return "", fmt.Errorf("virtual path not found: %s", virtualPath)
 	}
-	return m.Config.Dir
+	return physicalPath, nil
 }
 
-// ListFiles returns a list of files in the given path
-func (m *Manager) ListFiles(path string) ([]FileInfo, error) {
-	fullPath := filepath.Join(m.getBaseDir(), path)
+// ListFiles returns a list of files in the given virtual path
+func (m *Manager) ListFiles(virtualPath string) ([]FileInfo, error) {
+	// Handle virtual root specially
+	if m.VirtualFS.IsVirtualRoot(virtualPath) {
+		return m.listVirtualRoot()
+	}
 
-	// Security check: ensure path is within managed directory
-	if !m.isPathSafe(fullPath) {
-		return nil, fmt.Errorf("access denied: path outside managed directory")
+	// Resolve virtual path to physical path
+	fullPath, err := m.resolvePath(virtualPath)
+	if err != nil {
+		return nil, err
 	}
 
 	entries, err := os.ReadDir(fullPath)
@@ -111,10 +122,13 @@ func (m *Manager) ListFiles(path string) ([]FileInfo, error) {
 			continue // Skip files we can't read
 		}
 
-		relativePath := filepath.Join(path, entry.Name())
+		// Convert physical path back to virtual path
+		physicalPath := filepath.Join(fullPath, entry.Name())
+		virtualPath, _ := m.VirtualFS.GetVirtualPath(physicalPath)
+		
 		fileInfo := FileInfo{
 			Name:    entry.Name(),
-			Path:    relativePath,
+			Path:    virtualPath,
 			Size:    info.Size(),
 			IsDir:   entry.IsDir(),
 			ModTime: info.ModTime(),
@@ -133,19 +147,25 @@ func (m *Manager) ListFiles(path string) ([]FileInfo, error) {
 
 // GetQuotaInfo returns current quota usage information
 func (m *Manager) GetQuotaInfo() (*QuotaInfo, error) {
-	used, err := m.calculateDirectorySize(m.getBaseDir())
-	if err != nil {
-		return nil, fmt.Errorf("failed to calculate directory size: %w", err)
+	// Calculate total size across all directories
+	var totalUsed int64
+	for _, dir := range m.Directories {
+		size, err := m.calculateDirectorySize(dir.Source)
+		if err != nil {
+			log.Printf("Warning: failed to calculate size for %s: %v", dir.Source, err)
+			continue
+		}
+		totalUsed += size
 	}
 
 	info := &QuotaInfo{
-		Used:  used,
+		Used:  totalUsed,
 		Limit: m.Config.QuotaBytes,
 	}
 
 	if m.Config.QuotaBytes > 0 {
-		info.Available = m.Config.QuotaBytes - used
-		info.Exceeded = used > m.Config.QuotaBytes
+		info.Available = m.Config.QuotaBytes - totalUsed
+		info.Exceeded = totalUsed > m.Config.QuotaBytes
 	} else {
 		info.Available = -1 // Unlimited
 	}
@@ -153,25 +173,89 @@ func (m *Manager) GetQuotaInfo() (*QuotaInfo, error) {
 	return info, nil
 }
 
-// isPathSafe checks if the given path is within the managed directory
-func (m *Manager) isPathSafe(path string) bool {
-	abs, err := filepath.Abs(path)
+// listVirtualRoot lists the virtual directories at the root level
+func (m *Manager) listVirtualRoot() ([]FileInfo, error) {
+	var files []FileInfo
+	
+	// Get unique top-level virtual directories
+	seen := make(map[string]bool)
+	
+	for _, dir := range m.Directories {
+		// Extract the top-level component
+		parts := strings.Split(strings.TrimPrefix(dir.Virtual, "/"), "/")
+		if len(parts) == 0 || parts[0] == "" {
+			continue
+		}
+		
+		topLevel := parts[0]
+		if seen[topLevel] {
+			continue
+		}
+		seen[topLevel] = true
+		
+		// Check if this maps directly to a physical directory
+		virtualPath := "/" + topLevel
+		if physicalPath, found := m.VirtualFS.ResolvePath(virtualPath); found {
+			// Get info from the physical directory
+			info, err := os.Stat(physicalPath)
+			if err == nil {
+				files = append(files, FileInfo{
+					Name:    topLevel,
+					Path:    virtualPath,
+					Size:    info.Size(),
+					IsDir:   true,
+					ModTime: info.ModTime(),
+					Mode:    info.Mode().String(),
+				})
+			}
+		} else {
+			// Virtual directory without direct mapping
+			files = append(files, FileInfo{
+				Name:    topLevel,
+				Path:    virtualPath,
+				Size:    0,
+				IsDir:   true,
+				ModTime: time.Now(),
+				Mode:    "drwxr-xr-x",
+			})
+		}
+	}
+	
+	// Sort by name
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Name < files[j].Name
+	})
+	
+	return files, nil
+}
+
+// isPathSafe checks if the given physical path is within any managed directory
+func (m *Manager) isPathSafe(physicalPath string) bool {
+	abs, err := filepath.Abs(physicalPath)
 	if err != nil {
 		return false
 	}
 
-	managedAbs, err := filepath.Abs(m.getBaseDir())
-	if err != nil {
-		return false
+	// Check if path is within any of the configured directories
+	for _, dir := range m.Directories {
+		absBase, err := filepath.Abs(dir.Source)
+		if err != nil {
+			continue
+		}
+
+		// Check if the path is within this directory
+		rel, err := filepath.Rel(absBase, abs)
+		if err != nil {
+			continue
+		}
+
+		// Path is safe if it doesn't start with ".." (going up)
+		if !strings.HasPrefix(rel, "..") && !strings.HasPrefix(filepath.ToSlash(rel), "..") {
+			return true
+		}
 	}
 
-	rel, err := filepath.Rel(managedAbs, abs)
-	if err != nil {
-		return false
-	}
-
-	// Path should not start with .. (going up from managed directory)
-	return !filepath.IsAbs(rel) && !strings.HasPrefix(rel, "..")
+	return false
 }
 
 // calculateDirectorySize recursively calculates the total size of a directory

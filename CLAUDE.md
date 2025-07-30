@@ -85,4 +85,5 @@ The application accepts these arguments:
 - The github command line client `gh` is set up and has full admin right on my GitHub projects.
 - When fixing issues or implementing new features, always create a branch and a merge request.
 - Mention the issue number in the commit message to link them together
+- Never commit or push changes or create pull or merge requests when not explicitly asked for.
  
