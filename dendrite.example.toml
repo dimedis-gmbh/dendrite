@@ -12,20 +12,32 @@ listen = "127.0.0.1:3000"
 # Can be overridden with --quota flag or DENDRITE_MAIN_QUOTA environment variable
 quota = "100GB"
 
-# JWT authentication secret (optional)
-# Must be at least 32 characters for security
-# Leave empty to disable authentication
-# Can be overridden with --jwt-secret flag or DENDRITE_MAIN_JWT_SECRET environment variable
+# JWT Authentication Configuration (optional)
+# When JWT authentication is enabled, Dendrite operates in multi-tenant mode
+# where directory access is controlled by JWT tokens.
+# IMPORTANT: JWT mode and directory mappings are mutually exclusive!
+[jwt_auth]
+# JWT secret for token validation
+# Must be at least 32 characters (256 bits) for security
+# Can be overridden with --jwt-secret flag or DENDRITE_JWT_AUTH_JWT_SECRET environment variable
 jwt_secret = ""
 
-# Directory mappings
+# Base directory for JWT mode
+# All paths in JWT tokens are relative to this directory
+# Required when jwt_secret is set
+# Can be overridden with --base-dir flag or DENDRITE_JWT_AUTH_BASE_DIR environment variable
+base_dir = ""
+
+# Directory mappings (only used when JWT authentication is disabled).
 # Each entry creates a virtual folder in the web interface
 # Source must be an absolute path to an existing directory
 # Virtual must start with / and be unique
-# Can be extended with --dir flag (e.g., --dir /path:/virtual)
+# Can be extended with --dir flag (e.g., --dir /path:/virtual or --dir /path)
 
 [[directories]]
+# Path in filesystem exposed
 source = "/home/user/documents"
+# Virtual Path inside the filemanager
 virtual = "/documents"
 
 [[directories]]
@@ -44,3 +56,31 @@ virtual = "/photos"
 # [[directories]]
 # source = "/etc/myapp/config"
 # virtual = "/config"
+
+# ============================================================================
+# JWT Mode Configuration Example
+# ============================================================================
+# To enable JWT authentication mode, uncomment and configure the jwt_auth section:
+#
+# [jwt_auth]
+# jwt_secret = "your-secret-key-must-be-at-least-32-characters-long"
+# base_dir = "/var/files"
+#
+# With this configuration:
+# - The [[directories]] sections above are ignored
+# - All JWT token paths are relative to /var/files
+# - Users can only access directories specified in their JWT tokens
+#
+# Example JWT payload:
+# {
+#   "directories": [
+#     {"source": "user123/documents", "virtual": "/documents"},
+#     {"source": "shared/public", "virtual": "/public"}
+#   ],
+#   "quota": "10GB",
+#   "expires": "2025-12-31T23:59:59Z"
+# }
+#
+# This would give access to:
+# - /var/files/user123/documents (shown as /documents)
+# - /var/files/shared/public (shown as /public)
