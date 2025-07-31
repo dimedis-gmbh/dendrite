@@ -24,8 +24,10 @@ func main() {
 	}
 	if cfg.JWTSecret != "" {
 		fmt.Printf("JWT authentication enabled\n")
+		fmt.Printf("Base directory: %s\n", cfg.BaseDir)
+	} else {
+		fmt.Printf("Serving %d directories\n", len(cfg.Directories))
 	}
-	fmt.Printf("Serving %d directories\n", len(cfg.Directories))
 
 	srv := server.New(cfg)
 
