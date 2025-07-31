@@ -56,52 +56,125 @@ This starts the server on `http://127.0.0.1:3000` serving the current directory.
 
 Options:
 - `--listen`: IP address and port to listen on (default: `127.0.0.1:3000`)
-- `--dir`: Directory to expose for web management (default: `./`)
+- `--dir`: Directory to serve (can be specified multiple times, format: `source:virtual` or just `path`)
+- `--config`: Path to TOML configuration file
 - `--quota`: Maximum directory size with units (MB/GB/TB, default: no limit)
-- `--jwt`: JWT secret for authentication (minimum 32 characters)
+- `--jwt-secret`: JWT secret for authentication (minimum 32 characters)
+- `--base-dir`: Base directory for JWT mode (required when using --jwt-secret)
 
 ### Examples
 
 ```bash
-# Serve /home/user/documents on port 8080
-./dendrite --listen 0.0.0.0:8080 --dir /home/user/documents
+# Serve current directory
+./dendrite --dir .
 
-# Set a 10GB quota limit
-./dendrite --dir /var/data --quota 10GB
+# Serve a specific directory
+./dendrite --dir /var/www
 
-# Multiple options
-./dendrite --listen 192.168.1.100:3000 --dir /shared --quota 500MB
+# Serve multiple directories with virtual paths
+./dendrite --dir /home/user/docs:/documents --dir /var/shared:/shared
 
-# Enable JWT authentication
-./dendrite --jwt "your-secret-key-at-least-32-characters-long" --dir /var/www/files
+# Set custom port and quota
+./dendrite --dir . --listen 0.0.0.0:8080 --quota 10GB
+
+# Use a configuration file
+./dendrite --config dendrite.toml
+
+# Override config file settings
+./dendrite --config dendrite.toml --listen 0.0.0.0:8080
+
+# Enable JWT authentication with base directory
+./dendrite --jwt-secret "your-secret-key-at-least-32-characters-long" --base-dir /var/files
 ```
+
+### Configuration File
+
+Dendrite supports TOML configuration files for managing multiple directories. Create a `dendrite.toml` file:
+
+```toml
+[main]
+listen = "127.0.0.1:3000"
+quota = "100GB"
+
+# For directory mode (without JWT)
+[[directories]]
+source = "/home/user/documents"
+virtual = "/documents"
+
+[[directories]]
+source = "/var/shared/media"
+virtual = "/media"
+
+[[directories]]
+source = "/opt/backups"
+virtual = "/backups"
+
+# For JWT mode (directories configuration is ignored)
+[jwt_auth]
+jwt_secret = ""  # Set to enable JWT authentication
+base_dir = "/var/files"  # Base directory for JWT paths
+```
+
+With this configuration:
+- **Directory mode**: Users will see three virtual directories (`/documents`, `/media`, `/backups`) that map to different physical locations on the server.
+- **JWT mode**: When `jwt_secret` is set, the `directories` configuration is ignored. All paths in JWT tokens are relative to `base_dir`.
+
+### Configuration Precedence
+
+Configuration values are loaded in the following order (later values override earlier ones):
+1. Configuration file (dendrite.toml)
+2. Environment variables (e.g., `DENDRITE_LISTEN`, `DENDRITE_QUOTA`)
+3. Command line arguments
+
+### Environment Variables
+
+All configuration options can be set via environment variables:
+- `DENDRITE_LISTEN`
+- `DENDRITE_DIR` (comma-separated for multiple directories)
+- `DENDRITE_QUOTA`
+- `DENDRITE_JWT_SECRET`
+- `DENDRITE_BASE_DIR`
+- `DENDRITE_CONFIG`
 
 ### JWT Authentication
 
-When JWT authentication is enabled with the `--jwt` flag, Dendrite requires a valid JWT token to access the file manager. This allows you to:
+When JWT authentication is enabled, Dendrite operates in a secure multi-tenant mode where:
 
-- Restrict users to specific subdirectories
-- Set per-user quota limits
-- Control session expiry
+- All directory paths in JWT tokens are relative to a configured base directory
+- Each user can only access directories specified in their JWT token
+- Users can have individual quota limits
+- Sessions have configurable expiry times
+- **Important**: JWT mode and directory configuration are mutually exclusive
 
 To use JWT authentication:
 
-1. Start Dendrite with a JWT secret:
+1. Enable JWT with a base directory via configuration or command line:
    ```bash
-   ./dendrite --jwt "your-secret-key-at-least-32-characters-long" --dir /var/www/files
+   ./dendrite --jwt-secret "your-secret-key-at-least-32-characters-long" --base-dir /var/files
    ```
 
 2. Create a JWT token with the following claims:
    ```json
    {
-     "dir": "users/john_doe/documents",
+     "directories": [
+       {
+         "source": "user123/documents",
+         "virtual": "/documents"
+       },
+       {
+         "source": "shared/public",
+         "virtual": "/public"
+       }
+     ],
      "quota": "100MB",
      "expires": "2025-12-31T23:59:59Z"
    }
    ```
-   - `dir`: Restricts access to this subdirectory
+   - `directories`: Array of directory mappings (paths are relative to base_dir)
    - `quota`: Sets a user-specific quota limit
    - `expires`: Controls when the session expires
+   
+   **Example**: With `--base-dir /var/files`, the path `user123/documents` maps to `/var/files/user123/documents`
    
    You can create test tokens using [jwt.io](https://jwt.io) - paste your secret in the signature section and the claims in the payload.
 
@@ -391,7 +464,12 @@ This ensures tests run in the same environment locally as in CI, preventing "wor
 - Designed to run behind a reverse proxy for authentication and TLS
 - Path traversal protection ensures access only within the configured directory
 - File permissions follow secure defaults (directories: 0750, files: 0640)
-- No built-in authentication - rely on reverse proxy or network isolation
+- JWT mode provides additional security:
+  - All paths are sandboxed within the base directory
+  - Invalid JWT tokens never fall back to default directories
+  - Directory existence is validated on each request
+  - Paths that escape the base directory are rejected
+- Without JWT: rely on reverse proxy or network isolation for authentication
 
 ## Contributing
 

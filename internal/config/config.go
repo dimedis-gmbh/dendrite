@@ -8,13 +8,38 @@ import (
 	"strings"
 )
 
+// DirMapping represents a mapping from a source directory to a virtual path
+type DirMapping struct {
+	Source  string `mapstructure:"source" json:"source"`
+	Virtual string `mapstructure:"virtual" json:"virtual"`
+}
+
+// MainConfig holds the main configuration settings
+type MainConfig struct {
+	Listen    string `mapstructure:"listen"`
+	Quota     string `mapstructure:"quota"`
+}
+
+// JWTAuthConfig holds JWT authentication configuration
+type JWTAuthConfig struct {
+	JWTSecret string `mapstructure:"jwt_secret"`
+	BaseDir   string `mapstructure:"base_dir"`
+}
+
 // Config holds the application configuration
 type Config struct {
-	Listen     string
-	Dir        string
-	Quota      string
+	Main        MainConfig     `mapstructure:"main"`
+	JWTAuth     JWTAuthConfig  `mapstructure:"jwt_auth"`
+	Directories []DirMapping   `mapstructure:"directories"`
+	
+	// Computed fields (not from config file)
 	QuotaBytes int64
-	JWTSecret  string
+	
+	// Legacy fields for command line compatibility
+	Listen    string
+	Quota     string
+	JWTSecret string
+	BaseDir   string
 }
 
 // ParseQuota parses the quota string and sets QuotaBytes

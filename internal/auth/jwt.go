@@ -12,11 +12,17 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// DirMapping represents a directory mapping in JWT claims
+type DirMapping struct {
+	Source  string `json:"source"`
+	Virtual string `json:"virtual"`
+}
+
 // Claims represents the JWT claims for Dendrite
 type Claims struct {
-	Dir    string `json:"dir"`
-	Quota  string `json:"quota"`
-	Expires string `json:"expires"`
+	Directories []DirMapping `json:"directories"`
+	Quota       string       `json:"quota"`
+	Expires     string       `json:"expires"`
 	jwt.RegisteredClaims
 }
 

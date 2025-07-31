@@ -72,7 +72,11 @@ The application accepts these arguments:
 - Always implement changes having maximum security in mind.
 - Tests (fronend and backend) must cover the happy and the unhappy path.
 - Remember to update the documentation.
+- When new settings are introduced or when existing settings change, update `dendrite.example.toml`.
 - When working on issues reported via GitHub, always read all comments of the issue.
+- When writing comments or documentation, pay attention to punctuation marks. Full sentences must en with a full stop.
+- After each change that affects golang code, run `golangci-lint run` and fix issues.
+- After each change that affects golang code, run go unit tests and fix issues.
 
 ## Releasing
 
@@ -85,4 +89,5 @@ The application accepts these arguments:
 - The github command line client `gh` is set up and has full admin right on my GitHub projects.
 - When fixing issues or implementing new features, always create a branch and a merge request.
 - Mention the issue number in the commit message to link them together
+- Never commit or push changes or create pull or merge requests when not explicitly asked for.
  

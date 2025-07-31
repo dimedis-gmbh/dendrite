@@ -70,7 +70,9 @@ func TestJWTMiddlewareWithValidToken(t *testing.T) {
 	
 	// Create a valid token
 	claims := &Claims{
-		Dir:     "test/directory",
+		Directories: []DirMapping{
+			{Source: "/tmp/test", Virtual: "/test"},
+		},
 		Quota:   "100MB",
 		Expires: time.Now().Add(time.Hour).Format(time.RFC3339),
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -98,7 +100,8 @@ func TestJWTMiddlewareWithValidToken(t *testing.T) {
 	
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.NotNil(t, capturedClaims)
-	assert.Equal(t, "test/directory", capturedClaims.Dir)
+	assert.Len(t, capturedClaims.Directories, 1)
+	assert.Equal(t, "/test", capturedClaims.Directories[0].Virtual)
 	assert.Equal(t, "100MB", capturedClaims.Quota)
 }
 
@@ -107,7 +110,9 @@ func TestJWTMiddlewareWithExpiredToken(t *testing.T) {
 	
 	// Create an expired token
 	claims := &Claims{
-		Dir:     "test/directory",
+		Directories: []DirMapping{
+			{Source: "/tmp/test", Virtual: "/test"},
+		},
 		Quota:   "100MB",
 		Expires: time.Now().Add(-time.Hour).Format(time.RFC3339), // Expired
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -138,14 +143,20 @@ func TestJWTMiddlewareWithExpiredToken(t *testing.T) {
 func TestGetClaimsFromContext(t *testing.T) {
 	// Test with claims in context
 	claims := &Claims{
-		Dir:   "test/dir",
+		Directories: []DirMapping{
+			{Source: "/tmp/test", Virtual: "/test"},
+		},
 		Quota: "50MB",
 	}
 	ctx := context.WithValue(context.Background(), ClaimsContextKey, claims)
 	
 	retrieved, ok := GetClaimsFromContext(ctx)
 	assert.True(t, ok)
-	assert.Equal(t, claims.Dir, retrieved.Dir)
+	assert.Equal(t, len(claims.Directories), len(retrieved.Directories))
+	for i := range claims.Directories {
+		assert.Equal(t, claims.Directories[i].Source, retrieved.Directories[i].Source)
+		assert.Equal(t, claims.Directories[i].Virtual, retrieved.Directories[i].Virtual)
+	}
 	assert.Equal(t, claims.Quota, retrieved.Quota)
 	
 	// Test without claims in context
@@ -160,7 +171,9 @@ func TestValidateJWTString(t *testing.T) {
 	
 	t.Run("valid token", func(t *testing.T) {
 		claims := &Claims{
-			Dir:     "user/documents",
+			Directories: []DirMapping{
+				{Source: "/home/user/documents", Virtual: "/documents"},
+			},
 			Quota:   "1GB",
 			Expires: time.Now().Add(time.Hour).Format(time.RFC3339),
 			RegisteredClaims: jwt.RegisteredClaims{
@@ -175,7 +188,8 @@ func TestValidateJWTString(t *testing.T) {
 		validatedClaims, err := ValidateJWTString(tokenString, secret)
 		assert.NoError(t, err)
 		assert.NotNil(t, validatedClaims)
-		assert.Equal(t, "user/documents", validatedClaims.Dir)
+		assert.Len(t, validatedClaims.Directories, 1)
+		assert.Equal(t, "/documents", validatedClaims.Directories[0].Virtual)
 		assert.Equal(t, "1GB", validatedClaims.Quota)
 	})
 	
@@ -187,7 +201,9 @@ func TestValidateJWTString(t *testing.T) {
 	
 	t.Run("expired token", func(t *testing.T) {
 		claims := &Claims{
-			Dir:     "user/documents",
+			Directories: []DirMapping{
+				{Source: "/home/user/documents", Virtual: "/documents"},
+			},
 			Quota:   "1GB",
 			Expires: time.Now().Add(-time.Hour).Format(time.RFC3339), // Expired
 			RegisteredClaims: jwt.RegisteredClaims{
@@ -209,7 +225,9 @@ func TestValidateJWTString(t *testing.T) {
 		// Create token with different signing method
 		token := jwt.New(jwt.SigningMethodRS256) // Using RSA instead of HMAC
 		token.Claims = &Claims{
-			Dir:   "test",
+			Directories: []DirMapping{
+				{Source: "/tmp/test", Virtual: "/test"},
+			},
 			Quota: "100MB",
 		}
 		
