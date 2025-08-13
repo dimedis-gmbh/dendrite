@@ -438,12 +438,13 @@ class UI {
         
         // Reload current files with new sort
         const currentFiles = Array.from(document.querySelectorAll('.file-row')).map(row => ({
-            name: row.querySelector('.col-name').textContent,
+            name: row.querySelector('.col-name').textContent.trim(),
             path: row.dataset.path,
             isDir: row.dataset.isDir === 'true',
             size: parseInt(row.dataset.size || '0', 10),
             modTime: row.dataset.modTime
         }));
+        
         
         if (currentFiles.length > 0) {
             this.renderFileList(currentFiles);

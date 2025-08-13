@@ -3,7 +3,12 @@ class FileIcons {
     static getIconClass(fileName, isDir) {
         if (isDir) return 'icon-folder';
         
-        const ext = fileName.split('.').pop().toLowerCase();
+        // Ensure fileName is a string and trim any whitespace
+        if (!fileName || typeof fileName !== 'string') {
+            return 'icon-file';
+        }
+        
+        const ext = fileName.trim().split('.').pop().toLowerCase();
         
         // Documents
         if (['doc', 'docx', 'odt', 'rtf'].includes(ext)) {
