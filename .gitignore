@@ -55,3 +55,4 @@ build/
 
 # Working dev config
 dendrite.toml
+/tasks.md
