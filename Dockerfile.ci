@@ -44,5 +44,21 @@ COPY . .
 # Build dendrite binary for Linux
 RUN go build -o dendrite .
 
+# Create script to run tests and copy results
+RUN echo '#!/bin/bash\n\
+set -e\n\
+echo "Running Go tests..."\n\
+go test -v -race ./...\n\
+echo ""\n\
+echo "Running Playwright tests..."\n\
+npm test -- --reporter=list,html\n\
+TEST_EXIT_CODE=$?\n\
+echo ""\n\
+echo "Test exit code: $TEST_EXIT_CODE"\n\
+# Ensure playwright-report exists even if tests pass\n\
+mkdir -p /app/playwright-report\n\
+exit $TEST_EXIT_CODE' > /app/run-tests.sh && \
+chmod +x /app/run-tests.sh
+
 # Run the tests
-CMD ["npm", "test"]
+CMD ["/app/run-tests.sh"]
