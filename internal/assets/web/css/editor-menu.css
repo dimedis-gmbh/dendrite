@@ -1,0 +1,91 @@
+/* Editor Menu Bar Styles */
+.editor-menubar {
+    height: 30px;
+    background: #f8f8f8;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    align-items: center;
+    user-select: none;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+}
+
+.menu-item {
+    position: relative;
+    padding: 0 15px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    color: #333;
+}
+
+.menu-item:hover {
+    background: #e8e8e8;
+}
+
+.dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: white;
+    border: 1px solid #ccc;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    min-width: 200px;
+    z-index: 1000;
+}
+
+.menu-item.active .dropdown {
+    display: block;
+}
+
+.menu-action {
+    padding: 8px 15px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.menu-action:hover {
+    background: #0078d4;
+    color: white;
+}
+
+.menu-action .shortcut {
+    font-size: 12px;
+    opacity: 0.7;
+    margin-left: 20px;
+}
+
+.menu-separator {
+    height: 1px;
+    background: #e0e0e0;
+    margin: 4px 0;
+}
+
+/* Status Bar */
+.editor-statusbar {
+    height: 25px;
+    background: #007acc;
+    color: white;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    font-size: 12px;
+    font-family: monospace;
+}
+
+.editor-statusbar > span {
+    margin-right: 20px;
+}
+
+#modified-indicator {
+    color: #ffcc00;
+    font-weight: bold;
+}
+
+#cursor-position {
+    margin-left: auto;
+}

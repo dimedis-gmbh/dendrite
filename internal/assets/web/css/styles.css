@@ -173,6 +173,8 @@ body {
     border-bottom: 1px solid #f0f0f0;
     border-right: 1px solid #f0f0f0;
     white-space: nowrap;
+    cursor: default;
+    user-select: none;
 }
 
 #file-list tr:hover {
@@ -187,6 +189,10 @@ body {
 .col-select {
     width: 30px;
     text-align: center;
+}
+
+.col-select input[type="checkbox"] {
+    cursor: pointer;
 }
 
 .col-icon {
@@ -435,4 +441,74 @@ body {
 .selected {
     background: #0078d4 !important;
     color: white !important;
+}
+
+/* Editor Modal */
+#editor-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#editor-modal.hidden {
+    display: none;
+}
+
+.editor-modal-content {
+    width: 95%;
+    height: 95%;
+    background: white;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.editor-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    background: #f8f8f8;
+    border-bottom: 1px solid #ddd;
+    border-radius: 8px 8px 0 0;
+}
+
+#editor-modal-filename {
+    font-weight: bold;
+    font-size: 16px;
+}
+
+.editor-modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #666;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.editor-modal-close:hover {
+    color: #000;
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+}
+
+#editor-modal-iframe {
+    flex: 1;
+    width: 100%;
+    border: none;
+    border-radius: 0 0 8px 8px;
 }

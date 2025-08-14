@@ -64,6 +64,8 @@
         <!-- Context Menu -->
         <div id="context-menu" class="hidden">
             <div class="menu-item" data-action="open">Open</div>
+            <div class="menu-item" data-action="edit-modal">Edit (modal)</div>
+            <div class="menu-item" data-action="edit-window">Edit (new window)</div>
             <div class="menu-item" data-action="download">Download</div>
             <div class="menu-separator"></div>
             <div class="menu-item" data-action="cut">Cut</div>
@@ -108,6 +110,17 @@
         <!-- Loading Overlay -->
         <div id="loading" class="hidden">
             <div class="spinner"></div>
+        </div>
+        
+        <!-- Editor Modal -->
+        <div id="editor-modal" class="modal hidden">
+            <div class="editor-modal-content">
+                <div class="editor-modal-header">
+                    <span id="editor-modal-filename"></span>
+                    <button class="editor-modal-close">&times;</button>
+                </div>
+                <iframe id="editor-modal-iframe" src=""></iframe>
+            </div>
         </div>
     </div>
 

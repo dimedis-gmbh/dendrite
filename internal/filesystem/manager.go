@@ -131,7 +131,7 @@ func (m *Manager) ListFiles(virtualPath string) ([]FileInfo, error) {
 		// Convert physical path back to virtual path
 		physicalPath := filepath.Join(fullPath, entry.Name())
 		virtualPath, _ := m.VirtualFS.GetVirtualPath(physicalPath)
-		
+
 		fileInfo := FileInfo{
 			Name:    entry.Name(),
 			Path:    virtualPath,
@@ -182,23 +182,23 @@ func (m *Manager) GetQuotaInfo() (*QuotaInfo, error) {
 // listVirtualRoot lists the virtual directories at the root level
 func (m *Manager) listVirtualRoot() ([]FileInfo, error) {
 	var files []FileInfo
-	
+
 	// Get unique top-level virtual directories
 	seen := make(map[string]bool)
-	
+
 	for _, dir := range m.Directories {
 		// Extract the top-level component
 		parts := strings.Split(strings.TrimPrefix(dir.Virtual, "/"), "/")
 		if len(parts) == 0 || parts[0] == "" {
 			continue
 		}
-		
+
 		topLevel := parts[0]
 		if seen[topLevel] {
 			continue
 		}
 		seen[topLevel] = true
-		
+
 		// Check if this maps directly to a physical directory
 		virtualPath := "/" + topLevel
 		if physicalPath, found := m.VirtualFS.ResolvePath(virtualPath); found {
@@ -226,12 +226,12 @@ func (m *Manager) listVirtualRoot() ([]FileInfo, error) {
 			})
 		}
 	}
-	
+
 	// Sort by name
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].Name < files[j].Name
 	})
-	
+
 	return files, nil
 }
 
@@ -307,7 +307,7 @@ func (m *Manager) UploadFile(virtualTargetPath, filename string, file io.Reader,
 
 	// Combine virtual path with filename
 	virtualFullPath := filepath.ToSlash(filepath.Join(virtualTargetPath, filename))
-	
+
 	// Resolve virtual path to physical path
 	physicalPath, err := m.resolvePath(virtualFullPath)
 	if err != nil {
@@ -383,7 +383,7 @@ func (m *Manager) MoveFile(virtualSourcePath, virtualDestPath string) error {
 	if err != nil {
 		return fmt.Errorf("invalid source path: %w", err)
 	}
-	
+
 	destPhysicalPath, err := m.resolvePath(virtualDestPath)
 	if err != nil {
 		return fmt.Errorf("invalid destination path: %w", err)
@@ -408,7 +408,7 @@ func (m *Manager) CopyFile(virtualSourcePath, virtualDestPath string) error {
 	if err != nil {
 		return fmt.Errorf("invalid source path: %w", err)
 	}
-	
+
 	destPhysicalPath, err := m.resolvePath(virtualDestPath)
 	if err != nil {
 		return fmt.Errorf("invalid destination path: %w", err)
@@ -651,6 +651,98 @@ func (m *Manager) addDirToZip(zw *zip.Writer, fullPath, relativePath string) err
 		// Add file to zip
 		return m.addFileToZip(zw, path, zipPath)
 	})
+}
+
+// ReadFile reads the content of a file
+func (m *Manager) ReadFile(virtualPath string) ([]byte, error) {
+	physicalPath, err := m.resolvePath(virtualPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if !m.isPathSafe(physicalPath) {
+		return nil, fmt.Errorf("access denied: path outside managed directory")
+	}
+
+	return os.ReadFile(physicalPath) //nolint:gosec // Path is validated by isPathSafe
+}
+
+// WriteFile writes content to a file
+func (m *Manager) WriteFile(virtualPath string, content []byte) error {
+	physicalPath, err := m.resolvePath(virtualPath)
+	if err != nil {
+		return err
+	}
+
+	if !m.isPathSafe(physicalPath) {
+		return fmt.Errorf("access denied: path outside managed directory")
+	}
+
+	// Check quota before writing
+	if m.Config.QuotaBytes > 0 {
+		// Get current file size if it exists
+		var oldSize int64
+		if info, err := os.Stat(physicalPath); err == nil {
+			oldSize = info.Size()
+		}
+
+		// Calculate new size after write
+		newSize := int64(len(content))
+
+		// Get directory to check quota for
+		var quotaPath string
+		for _, dir := range m.Directories {
+			if strings.HasPrefix(physicalPath, dir.Source) {
+				quotaPath = dir.Source
+				break
+			}
+		}
+
+		if quotaPath == "" {
+			return fmt.Errorf("file not in managed directory")
+		}
+
+		// Get current directory usage
+		currentUsage, err := m.calculateDirectorySize(quotaPath)
+		if err != nil {
+			return fmt.Errorf("failed to calculate directory size: %w", err)
+		}
+
+		// Check if new size would exceed quota
+		if currentUsage-oldSize+newSize > m.Config.QuotaBytes {
+			return fmt.Errorf("quota exceeded: operation would exceed storage limit")
+		}
+	}
+
+	// Write the file
+	return os.WriteFile(physicalPath, content, 0600) //nolint:gosec // Path is validated by isPathSafe
+}
+
+// GetFileInfo returns information about a file
+func (m *Manager) GetFileInfo(virtualPath string) (*FileInfo, error) {
+	physicalPath, err := m.resolvePath(virtualPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if !m.isPathSafe(physicalPath) {
+		return nil, fmt.Errorf("access denied: path outside managed directory")
+	}
+
+	info, err := os.Stat(physicalPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return &FileInfo{
+		Name:     info.Name(),
+		Path:     virtualPath,
+		Size:     info.Size(),
+		IsDir:    info.IsDir(),
+		ModTime:  info.ModTime(),
+		Mode:     info.Mode().String(),
+		MimeType: m.getMimeType(info.Name()),
+	}, nil
 }
 
 // CreateFolder creates a new directory at the specified virtual path

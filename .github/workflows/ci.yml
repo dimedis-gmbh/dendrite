@@ -41,6 +41,8 @@ jobs:
       run: go build -o dendrite .
     
     - name: Run Playwright tests for Chromium
+      env:
+        CI: true
       run: npm test -- --project=chromium
     
     - name: Upload test results

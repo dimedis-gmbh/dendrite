@@ -33,6 +33,9 @@ async function setupTestEnvironment() {
   writeFileSync(join(TEST_DIR, 'projects', 'project1', 'main.go'), 'package main\n\nfunc main() {}');
   writeFileSync(join(TEST_DIR, 'projects', 'project1', 'README.md'), '# Project 1');
   writeFileSync(join(TEST_DIR, 'projects', 'project2', 'index.js'), 'console.log("Hello");');
+  
+  // Add test file for editor tests
+  writeFileSync(join(TEST_DIR, 'test-editor.txt'), 'Hello World from editor test');
 
   // Build dendrite if not already built
   const dendritePath = join(__dirname, '..', '..', 'dendrite');
