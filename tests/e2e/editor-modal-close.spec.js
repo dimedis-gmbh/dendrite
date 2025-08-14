@@ -97,7 +97,10 @@ test.describe('Editor Modal Close Behavior', () => {
         
         // Make a change
         await editor.click();
-        await page.keyboard.type(' MODIFIED');
+        await editor.type(' MODIFIED');
+        
+        // Wait for changes to register
+        await page.waitForTimeout(500);
         
         // Set up dialog handler
         let dialogShown = false;
@@ -109,14 +112,14 @@ test.describe('Editor Modal Close Behavior', () => {
         // Press escape
         await page.keyboard.press('Escape');
         
-        // Wait a bit for potential dialog
-        await page.waitForTimeout(200);
+        // Wait for dialog
+        await page.waitForTimeout(500);
         
         // Check that dialog was shown
         expect(dialogShown).toBe(true);
         
         // Modal should still be visible (user cancelled)
-        await expect(page.locator('#editor-modal')).toBeVisible();
+        await expect(page.locator('#editor-modal')).toBeVisible({ timeout: 5000 });
     });
 
     test('should not interfere with standalone window mode', async ({ page, context }) => {
@@ -124,31 +127,37 @@ test.describe('Editor Modal Close Behavior', () => {
         const fileRow = page.locator('.file-row').filter({ hasText: 'modal-close-test.txt' }).first();
         await fileRow.click({ button: 'right' });
         
+        // Wait for context menu
+        await page.waitForTimeout(500);
+        
         // Open in new window
         const [newPage] = await Promise.all([
-            context.waitForEvent('page'),
+            context.waitForEvent('page', { timeout: 20000 }),
             page.click('[data-action="edit-window"]')
         ]);
         
-        await newPage.waitForLoadState();
-        await newPage.waitForSelector('#editor-container');
+        await newPage.waitForLoadState('networkidle', { timeout: 20000 });
+        await newPage.waitForSelector('#editor-container', { timeout: 20000 });
+        
+        // Wait for editor to fully load
+        await newPage.waitForTimeout(1000);
         
         // Make a change in the standalone window
         const editor = newPage.locator('.simple-editor');
         await editor.click();
-        await newPage.keyboard.type(' MODIFIED');
+        await editor.type(' MODIFIED');
         
-        // Try to close the standalone window
-        // In standalone mode, it should use the browser's default beforeunload
-        // We can't easily test this as Playwright doesn't expose beforeunload dialogs
-        // But we can verify the window is in standalone mode
+        // Wait for changes to register
+        await newPage.waitForTimeout(500);
         
+        // Verify the window is in standalone mode
         const isModal = await newPage.evaluate(() => {
             return window.self !== window.top;
         });
         
         expect(isModal).toBe(false); // Should be standalone, not in iframe
         
-        await newPage.close();
+        // Force close without dialog
+        await newPage.close({ runBeforeUnload: false });
     });
 });

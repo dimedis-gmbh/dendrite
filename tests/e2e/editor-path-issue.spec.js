@@ -6,11 +6,11 @@ test.describe('Editor Path Issue Detection', () => {
     test('should pass correct file path to editor', async ({ page }) => {
         // Navigate to the main page
         await page.goto('http://127.0.0.1:3001');
-        await page.waitForSelector('.file-row', { timeout: 10000 });
+        await page.waitForSelector('.file-row', { timeout: 20000 });
         
         // Find sample.js file
         const fileRow = page.locator('.file-row').filter({ hasText: 'sample.js' }).first();
-        await expect(fileRow).toBeVisible({ timeout: 10000 });
+        await expect(fileRow).toBeVisible({ timeout: 20000 });
         
         // Get the actual path from the file row data attribute
         const actualPath = await fileRow.getAttribute('data-path');

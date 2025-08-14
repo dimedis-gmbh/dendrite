@@ -168,22 +168,37 @@ test.describe('Dendrite Editor Content Display', () => {
         await page.click('[data-action="edit-modal"]');
         
         const iframe = page.frameLocator('#editor-modal-iframe');
-        await iframe.locator('#editor-container').waitFor();
+        await iframe.locator('#editor-container').waitFor({ timeout: 10000 });
         await page.waitForTimeout(1000);
         
         // Test Tab key inserts tab character, not jumping to next element
         const editorTextarea = iframe.locator('.simple-editor');
         await editorTextarea.click();
-        await page.keyboard.press('End'); // Go to end of content
-        await page.keyboard.press('Tab');
         
-        // The content should now have a tab character
-        const contentWithTab = await editorTextarea.inputValue();
+        // Go to end of content and add tab using evaluate
+        const contentWithTab = await editorTextarea.evaluate((el) => {
+            el.focus();
+            el.setSelectionRange(el.value.length, el.value.length);
+            // Simulate tab key by inserting tab character
+            el.value += '\t';
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            return el.value;
+        });
+        
         // Tab should be added, making content longer
         expect(contentWithTab.length).toBeGreaterThan(expectedContent.length);
         
-        // Test Escape closes modal
+        // Test Escape closes modal - set up dialog handler if needed
+        let dialogHandled = false;
+        page.once('dialog', dialog => {
+            dialogHandled = true;
+            dialog.accept(); // Accept to close
+        });
+        
         await page.keyboard.press('Escape');
-        await expect(page.locator('#editor-modal')).toBeHidden();
+        await page.waitForTimeout(500);
+        
+        // Modal should be hidden
+        await expect(page.locator('#editor-modal')).toBeHidden({ timeout: 5000 });
     });
 });

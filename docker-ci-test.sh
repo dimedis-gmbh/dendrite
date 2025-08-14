@@ -3,8 +3,8 @@
 
 set -e
 
-echo "🐳 Building Docker image to match GitHub Actions environment..."
-docker build -f Dockerfile.ci -t dendrite-ci-test .
+#echo "🐳 Building Docker image to match GitHub Actions environment..."
+#docker build -f Dockerfile.ci -t dendrite-ci-test .
 
 echo ""
 echo "🧪 Running tests in CI-like environment..."

@@ -202,12 +202,11 @@ test.describe('Dendrite Editor - Comprehensive Tests', () => {
         const editor = iframe.locator('.simple-editor');
         await expect(editor).toBeVisible();
         
-        // Select the first line
-        await editor.click();
-        await page.keyboard.press('Home'); // Go to start of line
-        await page.keyboard.down('Shift');
-        await page.keyboard.press('End'); // Select to end of line
-        await page.keyboard.up('Shift');
+        // Select the first line using evaluate
+        await editor.evaluate((el) => {
+            el.focus();
+            el.setSelectionRange(0, el.value.indexOf('\n'));
+        });
         
         // Copy using menu
         await iframe.locator('.menu-item[data-menu="edit"]').click();
@@ -217,9 +216,15 @@ test.describe('Dendrite Editor - Comprehensive Tests', () => {
         // Verify menu closed
         await expect(iframe.locator('.menu-item[data-menu="edit"]')).not.toHaveClass(/active/);
         
-        // Move to end of document and paste
-        await page.keyboard.press('Control+End'); // Go to end
-        await page.keyboard.press('Enter'); // New line
+        // Wait for menu to close
+        await page.waitForTimeout(500);
+        
+        // Move to end of document
+        await editor.evaluate((el) => {
+            el.focus();
+            el.setSelectionRange(el.value.length, el.value.length);
+        });
+        await editor.type('\n');
         
         // Paste using menu
         await iframe.locator('.menu-item[data-menu="edit"]').click();
@@ -241,21 +246,28 @@ test.describe('Dendrite Editor - Comprehensive Tests', () => {
         const editor = iframe.locator('.simple-editor');
         await expect(editor).toBeVisible();
         
-        // Select the second line
-        await editor.click();
-        await page.keyboard.press('Down'); // Move to second line
-        await page.keyboard.press('Home');
-        await page.keyboard.down('Shift');
-        await page.keyboard.press('End');
-        await page.keyboard.up('Shift');
+        // Select the second line using evaluate
+        await editor.evaluate((el) => {
+            el.focus();
+            const lines = el.value.split('\n');
+            const firstLineEnd = lines[0].length + 1; // +1 for newline
+            const secondLineEnd = firstLineEnd + lines[1].length;
+            el.setSelectionRange(firstLineEnd, secondLineEnd);
+        });
         
         // Cut using menu
         await iframe.locator('.menu-item[data-menu="edit"]').click();
         await iframe.locator('[data-action="cut"]').click();
         
+        // Wait for cut to complete
+        await page.waitForTimeout(500);
+        
         // Move to end and paste
-        await page.keyboard.press('Control+End');
-        await page.keyboard.press('Enter');
+        await editor.evaluate((el) => {
+            el.focus();
+            el.setSelectionRange(el.value.length, el.value.length);
+        });
+        await editor.type('\n');
         
         // Paste using menu
         await iframe.locator('.menu-item[data-menu="edit"]').click();
@@ -320,8 +332,12 @@ test.describe('Dendrite Editor - Comprehensive Tests', () => {
         
         // Make a change
         await editor.click();
-        await page.keyboard.press('End');
-        await page.keyboard.type(' - SAVED VIA MENU');
+        await editor.evaluate((el) => {
+            el.focus();
+            const lines = el.value.split('\n');
+            el.setSelectionRange(lines[0].length, lines[0].length);
+        });
+        await editor.type(' - SAVED VIA MENU');
         
         // Save using menu
         await iframe.locator('.menu-item[data-menu="file"]').click();
@@ -355,7 +371,7 @@ test.describe('Dendrite Editor - Comprehensive Tests', () => {
         
         // Make a change
         await editor.click();
-        await page.keyboard.type('X');
+        await editor.type('X');
         
         // Should show modified (with bullet point)
         await expect(modifiedIndicator).toHaveText('● Modified');

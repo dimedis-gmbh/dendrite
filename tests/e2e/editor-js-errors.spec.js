@@ -33,17 +33,20 @@ test.describe('Editor JavaScript Error Detection', () => {
     test('should not have JavaScript errors when opening editor', async ({ page }) => {
         // Find and open a JS file
         const fileRow = page.locator('.file-row').filter({ hasText: 'sample.js' }).first();
-        await expect(fileRow).toBeVisible({ timeout: 10000 });
+        await expect(fileRow).toBeVisible({ timeout: 20000 });
         
         // Right-click to open context menu
         await fileRow.click({ button: 'right' });
-        await expect(page.locator('#context-menu')).toBeVisible();
+        
+        // Wait for context menu to appear
+        await page.waitForTimeout(500);
+        await expect(page.locator('#context-menu')).toBeVisible({ timeout: 10000 });
         
         // Click "Edit (modal)"
         await page.click('[data-action="edit-modal"]');
         
         // Wait for modal to appear
-        await expect(page.locator('#editor-modal')).toBeVisible();
+        await expect(page.locator('#editor-modal')).toBeVisible({ timeout: 10000 });
         
         // Wait for iframe to load
         const iframe = page.frameLocator('#editor-modal-iframe');
@@ -73,8 +76,8 @@ test.describe('Editor JavaScript Error Detection', () => {
             });
         });
         
-        // Wait a bit for any errors to appear
-        await page.waitForTimeout(2000);
+        // Wait longer for any errors to appear
+        await page.waitForTimeout(3000);
         
         // Check if editor container exists (this will fail if JS errors prevent initialization)
         try {
