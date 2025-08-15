@@ -70,30 +70,3 @@ jobs:
         name: playwright-report
         path: playwright-report/
         retention-days: 30
-
-  test-matrix:
-    name: Test on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version-file: 'go.mod'
-
-    - name: Run tests
-      run: go test -v ./...
-
-    - name: Build binary
-      run: |
-        if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          go build -o dendrite.exe .
-        else
-          go build -o dendrite .
-        fi

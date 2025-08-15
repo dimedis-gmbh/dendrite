@@ -174,10 +174,10 @@ func (s *Server) serveIndex(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) serveEditor(w http.ResponseWriter, _ *http.Request) {
-	// Serve editor.html from embedded filesystem
-	editorContent, err := fs.ReadFile(s.webFS, "editor.html")
+	// Serve monaco-editor.html from embedded filesystem
+	editorContent, err := fs.ReadFile(s.webFS, "monaco-editor.html")
 	if err != nil {
-		http.Error(w, "Failed to load editor.html", http.StatusInternalServerError)
+		http.Error(w, "Failed to load editor", http.StatusInternalServerError)
 		return
 	}
 

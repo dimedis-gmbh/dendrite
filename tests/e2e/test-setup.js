@@ -5,37 +5,29 @@ const { join } = require('path');
 const path = require('path');
 
 let dendriteProcess = null;
-const TEST_DIR = join(__dirname, 'test-data');
+const TEST_DIR = join(__dirname, 'test_data');
 const DENDRITE_PORT = 3001;
 
 async function setupTestEnvironment() {
-  // Clean up any existing test directory
-  if (existsSync(TEST_DIR)) {
-    rmSync(TEST_DIR, { recursive: true, force: true });
-  }
-
-  // Create test directory structure
-  mkdirSync(TEST_DIR, { recursive: true });
-  mkdirSync(join(TEST_DIR, 'documents'));
-  mkdirSync(join(TEST_DIR, 'images'));
-  mkdirSync(join(TEST_DIR, 'projects'));
-  mkdirSync(join(TEST_DIR, 'projects', 'project1'));
-  mkdirSync(join(TEST_DIR, 'projects', 'project2'));
-
-  // Create test files
-  writeFileSync(join(TEST_DIR, 'readme.txt'), 'This is a test readme file.');
-  writeFileSync(join(TEST_DIR, 'test.md'), '# Test Markdown\n\nThis is a test markdown file.');
-  writeFileSync(join(TEST_DIR, 'main.go'), 'package main\n\nfunc main() {\n\t// Test file\n}');
-  writeFileSync(join(TEST_DIR, 'data.json'), JSON.stringify({ test: true, data: 'sample' }, null, 2));
-  writeFileSync(join(TEST_DIR, 'documents', 'report.pdf'), 'PDF content placeholder');
-  writeFileSync(join(TEST_DIR, 'documents', 'notes.txt'), 'Meeting notes\n- Item 1\n- Item 2');
-  writeFileSync(join(TEST_DIR, 'images', 'logo.png'), 'PNG image placeholder');
-  writeFileSync(join(TEST_DIR, 'projects', 'project1', 'main.go'), 'package main\n\nfunc main() {}');
-  writeFileSync(join(TEST_DIR, 'projects', 'project1', 'README.md'), '# Project 1');
-  writeFileSync(join(TEST_DIR, 'projects', 'project2', 'index.js'), 'console.log("Hello");');
+  // Don't delete test_data if it exists as it contains the required test files
+  // The test_data directory is maintained with the correct test files
   
-  // Add test file for editor tests
-  writeFileSync(join(TEST_DIR, 'test-editor.txt'), 'Hello World from editor test');
+  // Ensure test directory exists
+  if (!existsSync(TEST_DIR)) {
+    // Create test directory structure
+    mkdirSync(TEST_DIR, { recursive: true });
+    mkdirSync(join(TEST_DIR, 'documents'));
+    mkdirSync(join(TEST_DIR, 'projects'));
+    mkdirSync(join(TEST_DIR, 'projects', 'project1'));
+
+    // Create test files
+    writeFileSync(join(TEST_DIR, 'readme.txt'), 'This is a test readme file.');
+    writeFileSync(join(TEST_DIR, 'sample.txt'), 'This is a sample text file.\nIt has multiple lines.\nFor testing the editor.');
+    writeFileSync(join(TEST_DIR, 'sample.js'), 'function hello() {\n  console.log("Hello World");\n}\n\nhello();');
+    writeFileSync(join(TEST_DIR, 'sample.md'), '# Test Markdown\n\nThis is a test markdown file.');
+    writeFileSync(join(TEST_DIR, 'documents', 'document.txt'), 'Document content');
+    writeFileSync(join(TEST_DIR, 'projects', 'project1', 'file.txt'), 'Project file content');
+  }
 
   // Build dendrite if not already built
   const dendritePath = join(__dirname, '..', '..', 'dendrite');
@@ -214,15 +206,8 @@ async function teardownTestEnvironment() {
     dendriteProcess = null;
   }
 
-  // Clean up test directory
-  if (existsSync(TEST_DIR)) {
-    console.log('Cleaning up test directory...');
-    try {
-      rmSync(TEST_DIR, { recursive: true, force: true });
-    } catch (error) {
-      console.log('Error cleaning test directory:', error.message);
-    }
-  }
+  // Don't clean up test directory - preserve test files
+  // The test_data directory contains the required test files for editor tests
 }
 
 function runCommand(command, args, options = {}) {
