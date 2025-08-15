@@ -77,6 +77,8 @@ The application accepts these arguments:
 - When writing comments or documentation, pay attention to punctuation marks. Full sentences must en with a full stop.
 - After each change that affects golang code, run `golangci-lint run` and fix issues.
 - After each change that affects golang code, run go unit tests and fix issues.
+- All temporary files (scripts, redirected output, samples) that are not reuqired for building, testing and running the
+  project, must be placed in ./tmp. Not on project root.
 
 ## Releasing
 

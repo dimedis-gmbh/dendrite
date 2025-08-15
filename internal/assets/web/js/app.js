@@ -30,4 +30,17 @@ class DendriteApp {
 // Start the application when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.dendriteApp = new DendriteApp();
+    
+    // Global message handler for iframe communication
+    window.addEventListener('message', (e) => {
+        if (e.data && e.data.type === 'close-editor') {
+            // Close the editor modal
+            const modal = document.getElementById('editor-modal');
+            const iframe = document.getElementById('editor-modal-iframe');
+            if (modal && iframe) {
+                iframe.src = '';
+                modal.classList.add('hidden');
+            }
+        }
+    });
 });

@@ -15,7 +15,13 @@ module.exports = defineConfig({
   /* Opt out of parallel tests on CI. */
   workers: process.env.CI ? 1 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: 'html',
+  reporter: process.env.CI ? [
+    ['list'],  // Simple list output for CI
+    ['html', { open: 'never' }],  // Generate HTML report but don't open it
+    ['junit', { outputFile: 'test-results/junit.xml' }]  // JUnit for CI systems
+  ] : [
+    ['html', { open: 'on-failure' }]  // Open HTML report only on failure for local dev
+  ],
   /* Increase timeout for CI environments */
   timeout: process.env.CI ? 60000 : 30000,
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */

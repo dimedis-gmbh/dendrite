@@ -7,42 +7,62 @@ on:
     branches: [ "**" ]
 
 jobs:
-  test:
-
-    name: Test
+  go-test:
+    name: Go Tests
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
         go-version-file: 'go.mod'
-    
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-    
+
     - name: Install dependencies
-      run: |
-        go mod download
-        npm ci
-    
-    - name: Install Playwright browsers
-      run: npx playwright install --with-deps
-    
+      run: go mod download
+
     - name: Run Go tests
       run: go test -v -race -coverprofile=coverage.out ./...
-    
+
     - name: Build binary
       run: go build -o dendrite .
-    
-    - name: Run Playwright tests for Chromium
-      run: npm test -- --project=chromium
-    
+
+    - name: Upload coverage
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: coverage.out
+        retention-days: 30
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+
+    - name: Run golangci-lint
+      run: ./test-golangci-lint.sh
+
+  docker-integration-test:
+    name: Docker Integration Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Docker CI test
+      run: ./docker-ci-test.sh
+
     - name: Upload test results
       if: always()
       uses: actions/upload-artifact@v4
@@ -50,41 +70,3 @@ jobs:
         name: playwright-report
         path: playwright-report/
         retention-days: 30
-  
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version-file: 'go.mod'
-    
-    - name: Run golangci-lint
-      run: ./test-golangci-lint.sh
-  
-  test-matrix:
-    name: Test on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version-file: 'go.mod'
-    
-    - name: Run tests
-      run: go test -v ./...
-    
-    - name: Build binary
-      run: go build -o dendrite${{ matrix.os == 'windows-latest' && '.exe' || '' }} .

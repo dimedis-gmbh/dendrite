@@ -364,6 +364,11 @@ class UI {
             row.dataset.size = file.size || 0;
             row.dataset.modTime = file.modTime || '';
             
+            // Debug: log what path we're setting
+            if (!file.path || file.path === '/') {
+                console.warn('File has invalid path:', file.name, 'path:', file.path);
+            }
+            
             row.innerHTML = `
                 <td class="col-select">
                     <input type="checkbox" class="file-checkbox" data-path="${escapeHtml(file.path)}">
@@ -541,8 +546,15 @@ class UI {
             // Navigate into directory
             this.loadFiles(path);
         } else {
-            // For files, double-click shows properties (could be changed to do nothing)
-            this.showProperties(path);
+            // For files, check if it's editable
+            const fileName = path.split('/').pop() || path;
+            if (this.isEditableFile(fileName)) {
+                // Open editable files in the editor (new window)
+                this.openEditorWindow(path);
+            } else {
+                // For non-editable files, show properties
+                this.showProperties(path);
+            }
         }
     }
     
@@ -551,7 +563,8 @@ class UI {
         const row = checkbox.closest('.file-row');
         if (!row) return;
         
-        const path = checkbox.dataset.path;
+        const path = checkbox.dataset.path || row.dataset.path;
+        console.log('Checkbox change - path from checkbox:', checkbox.dataset.path, 'path from row:', row.dataset.path);
         
         if (checkbox.checked) {
             this.selectedFiles.add(path);
@@ -717,6 +730,8 @@ class UI {
     
     updateContextMenuItems() {
         const openItem = document.querySelector('[data-action="open"]');
+        const editModalItem = document.querySelector('[data-action="edit-modal"]');
+        const editWindowItem = document.querySelector('[data-action="edit-window"]');
         const renameItem = document.querySelector('[data-action="rename"]');
         const propertiesItem = document.querySelector('[data-action="properties"]');
         const selectedPaths = Array.from(this.selectedFiles);
@@ -727,17 +742,194 @@ class UI {
         });
         
         // Disable "Open" for files (only enable for folders)
+        // Enable "Edit" only for single text files
         if (selectedPaths.length === 1) {
             const row = document.querySelector(`[data-path="${selectedPaths[0]}"]`);
             if (row && row.dataset.isDir !== 'true') {
                 openItem.classList.add('disabled');
+                // Check if it's a text file that can be edited
+                const fileName = selectedPaths[0].split('/').pop();
+                if (!this.isEditableFile(fileName)) {
+                    editModalItem.classList.add('disabled');
+                    editWindowItem.classList.add('disabled');
+                }
+            } else {
+                // Disable edit for folders
+                editModalItem.classList.add('disabled');
+                editWindowItem.classList.add('disabled');
             }
         } else if (selectedPaths.length > 1) {
-            // Disable "Open" for multiple selections
+            // Disable "Open" and "Edit" for multiple selections
             openItem.classList.add('disabled');
+            editModalItem.classList.add('disabled');
+            editWindowItem.classList.add('disabled');
             // Also disable rename and properties for multiple selections
             renameItem.classList.add('disabled');
             propertiesItem.classList.add('disabled');
+        } else {
+            // No selection - disable edit
+            editModalItem.classList.add('disabled');
+            editWindowItem.classList.add('disabled');
+        }
+    }
+    
+    isEditableFile(fileName) {
+        const editableExtensions = [
+            'txt', 'md', 'js', 'jsx', 'ts', 'tsx', 'json', 'html', 'htm', 
+            'css', 'scss', 'sass', 'less', 'xml', 'svg', 'yaml', 'yml', 
+            'toml', 'ini', 'conf', 'config', 'sh', 'bash', 'zsh', 'fish',
+            'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp',
+            'php', 'sql', 'log', 'env', 'gitignore', 'dockerfile',
+            'makefile', 'readme', 'license', 'editorconfig'
+        ];
+        
+        const ext = fileName.split('.').pop().toLowerCase();
+        const fileNameLower = fileName.toLowerCase();
+        
+        // Check by extension or by common filenames without extensions
+        return editableExtensions.includes(ext) || 
+               editableExtensions.includes(fileNameLower);
+    }
+    
+    openEditorWindow(filePath) {
+        // Open editor in a new window without browser controls
+        const editorUrl = `/editor.html?path=${encodeURIComponent(filePath)}`;
+        const windowName = `dendrite_editor_${filePath.replace(/[^a-z0-9]/gi, '_')}`;
+        
+        // Use maximum restrictions to hide browser chrome
+        // Note: Modern browsers may ignore some of these for security reasons
+        const windowFeatures = [
+            'width=1024',
+            'height=768',
+            'menubar=no',
+            'toolbar=no',
+            'location=no',
+            'directories=no',
+            'status=no',
+            'scrollbars=yes',
+            'resizable=yes',
+            'copyhistory=no',
+            'personalbar=no',
+            'chrome=no',
+            'titlebar=no',
+            'addressbar=no'
+        ].join(',');
+        
+        // Open the editor window
+        const editorWindow = window.open(editorUrl, windowName, windowFeatures);
+        
+        if (!editorWindow) {
+            showError('Failed to open editor. Please check if pop-ups are blocked.');
+        }
+    }
+    
+    openEditorModal(filePath) {
+        // Open editor in a modal (iframe)
+        const modal = document.getElementById('editor-modal');
+        const iframe = document.getElementById('editor-modal-iframe');
+        const filenameSpan = document.getElementById('editor-modal-filename');
+        
+        console.log('Opening editor for file:', filePath);
+        
+        // Set the filename in the header
+        const filename = filePath.split('/').pop() || filePath;
+        filenameSpan.textContent = filename;
+        
+        // Set the iframe source
+        iframe.src = `/editor.html?path=${encodeURIComponent(filePath)}&mode=modal`;
+        
+        // Show the modal
+        modal.classList.remove('hidden');
+        
+        // Setup close button
+        const closeBtn = modal.querySelector('.editor-modal-close');
+        closeBtn.onclick = () => {
+            this.closeEditorModal();
+        };
+        
+        // Close on escape key
+        const escapeHandler = (e) => {
+            if (e.key === 'Escape') {
+                // Store the handler reference so closeEditorModal can remove it if needed
+                this.currentEscapeHandler = escapeHandler;
+                this.closeEditorModal();
+                // Handler will be removed either after successful close or if user cancels
+            }
+        };
+        document.addEventListener('keydown', escapeHandler);
+    }
+    
+    closeEditorModal() {
+        const modal = document.getElementById('editor-modal');
+        const iframe = document.getElementById('editor-modal-iframe');
+        
+        // Check for unsaved changes in the iframe
+        if (iframe.src && iframe.contentWindow) {
+            // Send message to check for unsaved changes
+            iframe.contentWindow.postMessage({ action: 'checkUnsavedChanges' }, '*');
+            
+            // Set up one-time listener for the response
+            const handleResponse = (e) => {
+                if (e.data && e.data.action === 'unsavedChangesStatus') {
+                    window.removeEventListener('message', handleResponse);
+                    
+                    if (e.data.hasUnsavedChanges) {
+                        // Show custom confirmation dialog for modal
+                        const message = `You have unsaved changes in "${e.data.filePath || 'the editor'}". Are you sure you want to close the editor without saving?`;
+                        
+                        if (confirm(message)) {
+                            // User confirmed, send force close message and then close
+                            iframe.contentWindow.postMessage({ action: 'forceClose' }, '*');
+                            // Give it a moment to process the forceClose
+                            setTimeout(() => {
+                                iframe.src = '';
+                                modal.classList.add('hidden');
+                                // Remove escape handler if it exists
+                                if (this.currentEscapeHandler) {
+                                    document.removeEventListener('keydown', this.currentEscapeHandler);
+                                    this.currentEscapeHandler = null;
+                                }
+                            }, 100);
+                        }
+                        // If user cancels, do nothing (modal stays open)
+                    } else {
+                        // No unsaved changes, close immediately
+                        iframe.src = '';
+                        modal.classList.add('hidden');
+                        // Remove escape handler if it exists
+                        if (this.currentEscapeHandler) {
+                            document.removeEventListener('keydown', this.currentEscapeHandler);
+                            this.currentEscapeHandler = null;
+                        }
+                    }
+                }
+            };
+            
+            window.addEventListener('message', handleResponse);
+            
+            // Fallback in case iframe doesn't respond (e.g., different origin or error)
+            setTimeout(() => {
+                window.removeEventListener('message', handleResponse);
+                // If we haven't closed by now, just close without checking
+                if (!modal.classList.contains('hidden')) {
+                    iframe.src = '';
+                    modal.classList.add('hidden');
+                    // Remove escape handler if it exists
+                    if (this.currentEscapeHandler) {
+                        document.removeEventListener('keydown', this.currentEscapeHandler);
+                        this.currentEscapeHandler = null;
+                    }
+                }
+            }, 500);
+        } else {
+            // No iframe source, just close
+            iframe.src = '';
+            modal.classList.add('hidden');
+            // Remove escape handler if it exists
+            if (this.currentEscapeHandler) {
+                document.removeEventListener('keydown', this.currentEscapeHandler);
+                this.currentEscapeHandler = null;
+            }
         }
     }
     
@@ -765,6 +957,18 @@ class UI {
                         this.loadFiles(selectedPaths[0]);
                     }
                     // Note: We no longer download files on "open" action
+                }
+                break;
+                
+            case 'edit-modal':
+                if (selectedPaths.length === 1) {
+                    this.openEditorModal(selectedPaths[0]);
+                }
+                break;
+                
+            case 'edit-window':
+                if (selectedPaths.length === 1) {
+                    this.openEditorWindow(selectedPaths[0]);
                 }
                 break;
                 

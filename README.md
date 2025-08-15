@@ -11,6 +11,7 @@ Dendrite is a web-based file manager written in Go that allows managing remote f
 
 - 🗂️ **Windows Explorer-like Interface**: Familiar UI with file browsing, selection, and navigation
 - 📁 **Complete File Operations**: Upload, download, move, copy, paste, delete, and create folders
+- ✏️ **Built-in Text Editor**: Edit text files directly in the browser with syntax highlighting support
 - 🎯 **Drag & Drop Support**: Upload files and move items with drag and drop
 - 📦 **ZIP Downloads**: Download multiple files or folders as a ZIP archive
 - 💾 **Quota Management**: Set storage limits with user-friendly error messages
@@ -199,7 +200,57 @@ curl -H "Authorization: Bearer $JWT" http://localhost:3000/api/files
 curl -H "Authorization: Bearer $JWT" http://localhost:3000/api/quota
 ```
 
+## Built-in Text Editor
+
+Dendrite includes a powerful built-in text editor for editing files directly in the browser:
+
+### Opening Files in the Editor
+
+There are multiple ways to open files in the editor:
+
+1. **Double-click**: Double-click any editable file to open it in a new window
+2. **Right-click menu**: Right-click and choose:
+   - "Edit in modal" - Opens the editor in a modal overlay
+   - "Edit in new window" - Opens the editor in a new browser window
+
+### Editor Features
+
+- **Syntax highlighting**: Automatic language detection for common file types
+- **Line numbers**: Visual line numbering with synchronized scrolling
+- **Desktop-like menus**: Familiar File and Edit menus that open on click (not hover)
+- **Undo/Redo**: Full undo and redo support
+- **Find & Replace**: Search and replace functionality
+- **Status bar**: Shows file name, modification status, and cursor position
+- **Smart warnings**: Context-aware unsaved changes warnings for modal vs window mode
+- **Minimal chrome**: New windows open with minimal browser UI for distraction-free editing
+- **Text selection preservation**: Selected text remains highlighted when using menus
+
+### Supported File Types
+
+The editor can open any text-based file, including:
+- Text files (.txt, .md, .log)
+- Source code (.js, .ts, .jsx, .tsx, .py, .go, .java, .c, .cpp, .rs, .rb, .php)
+- Configuration files (.json, .xml, .yml, .yaml, .toml, .ini, .env)
+- Web files (.html, .css, .scss, .sass, .less)
+- Scripts (.sh, .bash, .zsh, .ps1, .bat)
+- Documentation (.md, .rst, .tex)
+
+### Editor Keyboard Shortcuts
+
+- **Ctrl/Cmd+S**: Save file
+- **Ctrl/Cmd+Z**: Undo
+- **Ctrl/Cmd+Y**: Redo (Ctrl/Cmd+Shift+Z on Mac)
+- **Ctrl/Cmd+X**: Cut selected text
+- **Ctrl/Cmd+C**: Copy selected text
+- **Ctrl/Cmd+V**: Paste
+- **Ctrl/Cmd+A**: Select all
+- **Ctrl/Cmd+F**: Find
+- **Ctrl/Cmd+H**: Replace
+- **Escape**: Close modal editor (with confirmation if unsaved)
+
 ## Keyboard Shortcuts
+
+### File Manager Shortcuts
 
 - **Ctrl/Cmd+A**: Select all files
 - **Ctrl/Cmd+X**: Cut selected files
@@ -448,6 +499,7 @@ This ensures tests run in the same environment locally as in CI, preventing "wor
 
 ## API Endpoints
 
+### File Management
 - `GET /api/files?path=<path>` - List files in directory
 - `POST /api/files` - Upload file
 - `GET /api/files/<path>` - Download file
@@ -458,6 +510,10 @@ This ensures tests run in the same environment locally as in CI, preventing "wor
 - `POST /api/mkdir` - Create directory
 - `POST /api/download/zip` - Download multiple files as ZIP
 - `GET /api/quota` - Get quota information
+
+### Text Editor
+- `GET /api/files/<path>/raw` - Get raw file content for editing
+- `PUT /api/files/<path>/raw` - Save edited file content
 
 ## Security Considerations
 

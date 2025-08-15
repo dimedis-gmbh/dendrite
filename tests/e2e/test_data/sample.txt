@@ -1,0 +1,16 @@
+This is a sample text file for testing the Dendrite editor.
+
+It contains multiple lines of text.
+Some lines are longer than others to test word wrapping and scrolling behavior.
+
+Special characters: !@#$%^&*()_+-=[]{}|;':",./<>?
+
+Unicode test: 你好世界 🌍 Ümlaut çédille
+
+The editor should be able to:
+1. Load this file correctly
+2. Edit and save changes
+3. Handle all these characters properly
+
+End of test file.
+ddSuper Cools
