@@ -35,8 +35,8 @@ RUN go mod download
 COPY package*.json ./
 RUN npm ci
 
-# Install Playwright with dependencies
-RUN npx playwright install --with-deps
+# Install Playwright with Chromium dependencies only
+RUN npx playwright install --with-deps chromium
 
 # Now copy the rest of the project
 COPY . .
@@ -50,8 +50,8 @@ set -e\n\
 echo "Running Go tests..."\n\
 go test -v -race ./...\n\
 echo ""\n\
-echo "Running Playwright tests..."\n\
-npm test -- --reporter=list,html\n\
+echo "Running Playwright tests (Chromium only)..."\n\
+npm test -- --project=chromium --reporter=list,html\n\
 TEST_EXIT_CODE=$?\n\
 echo ""\n\
 echo "Test exit code: $TEST_EXIT_CODE"\n\

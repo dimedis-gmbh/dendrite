@@ -16,6 +16,7 @@ docker build -f "$DOCKERFILE" -t dendrite-ci-test .
 
 echo ""
 echo "🧪 Running tests in CI-like environment..."
+echo "Running Playwright tests on Chromium only (faster CI)"
 echo "This will show exactly what happens in GitHub Actions"
 echo ""
 
