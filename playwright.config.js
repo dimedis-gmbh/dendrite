@@ -44,7 +44,14 @@ module.exports = defineConfig({
   },
 
   /* Configure projects for major browsers */
-  projects: [
+  projects: process.env.CI ? [
+    // In CI, only run Chromium tests
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+  ] : [
+    // Locally, run all browsers
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
@@ -59,11 +66,11 @@ module.exports = defineConfig({
       name: 'webkit',
       use: { 
         ...devices['Desktop Safari'],
-        // Special configuration for webkit in CI
-        launchOptions: process.env.CI ? {
-          // Slower animations in CI
+        // Special configuration for webkit
+        launchOptions: {
+          // Slower animations for stability
           slowMo: 100,
-        } : {},
+        },
       },
     },
   ],

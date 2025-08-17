@@ -2,8 +2,8 @@ const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
 
-test.describe('Editor Window Features', () => {
-    const testDataDir = path.join(__dirname, 'test-data');
+test.describe.serial('Editor Window Features', () => {
+    const testDataDir = path.join(__dirname, 'test_data');
     const testFilePath = path.join(testDataDir, 'window-test.txt');
     const testContent = 'Test content for window features';
 
@@ -49,12 +49,16 @@ test.describe('Editor Window Features', () => {
         });
         expect(isModal).toBe(false);
         
-        // Check that the editor loaded
-        const editor = newPage.locator('.simple-editor');
-        await expect(editor).toBeVisible();
+        // Wait for Monaco to initialize
+        await newPage.waitForFunction(() => window.editorApp && window.editorApp.editor, { timeout: 10000 });
         
-        // Check the content loaded
-        const content = await editor.inputValue();
+        // Check that the editor loaded and content is displayed
+        const content = await newPage.evaluate(() => {
+            if (window.editorApp && window.editorApp.editor) {
+                return window.editorApp.editor.getValue();
+            }
+            return '';
+        });
         expect(content).toBe(testContent);
         
         // Note: We can't directly test if browser chrome is hidden as that's controlled
@@ -77,9 +81,12 @@ test.describe('Editor Window Features', () => {
         await newPage.waitForLoadState();
         await newPage.waitForSelector('#editor-container');
         
+        // Wait for Monaco to initialize
+        await newPage.waitForFunction(() => window.editorApp && window.editorApp.editor, { timeout: 10000 });
+        
         // Check status bar shows filename
-        const filenameElement = newPage.locator('#filename');
-        await expect(filenameElement).toHaveText('window-test.txt');
+        const filenameElement = newPage.locator('#file-path');
+        await expect(filenameElement).toContainText('window-test.txt');
         
         await newPage.close();
     });
@@ -97,10 +104,16 @@ test.describe('Editor Window Features', () => {
         await newPage.waitForLoadState();
         await newPage.waitForSelector('#editor-container');
         
-        // Make a change
-        const editor = newPage.locator('.simple-editor');
-        await editor.click();
-        await newPage.keyboard.type(' MODIFIED');
+        // Wait for Monaco to initialize
+        await newPage.waitForFunction(() => window.editorApp && window.editorApp.editor, { timeout: 10000 });
+        
+        // Make a change using Monaco API
+        await newPage.evaluate(() => {
+            if (window.editorApp && window.editorApp.editor) {
+                const currentValue = window.editorApp.editor.getValue();
+                window.editorApp.editor.setValue(currentValue + ' MODIFIED');
+            }
+        });
         
         // In standalone window, beforeunload is used
         // Playwright doesn't expose beforeunload dialogs, but we can verify

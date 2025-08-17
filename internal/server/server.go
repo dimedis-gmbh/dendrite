@@ -78,6 +78,10 @@ func (s *Server) setupRoutes() {
 	api.HandleFunc("/download/zip", s.downloadZip).Methods("POST")
 	api.HandleFunc("/quota", s.getQuotaInfo).Methods("GET")
 
+	// Log viewer endpoints
+	api.HandleFunc("/logs/{path:.+}/view", s.serveLogView).Methods("GET")
+	api.HandleFunc("/logs/{path:.+}/follow", s.serveLogFollow)
+
 	// Static files (frontend)
 	// Serve static assets from embedded filesystem
 	fileServer := http.FileServer(http.FS(s.webFS))
@@ -88,6 +92,9 @@ func (s *Server) setupRoutes() {
 
 	// Serve editor.html for the editor route
 	s.Router.Path("/editor.html").HandlerFunc(s.serveEditor)
+
+	// Serve log-viewer.html for the log viewer route
+	s.Router.Path("/log-viewer.html").HandlerFunc(s.serveLogViewer)
 
 	// For all other routes, serve index.html to support client-side routing
 	s.Router.PathPrefix("/").HandlerFunc(s.serveIndex)
@@ -183,6 +190,20 @@ func (s *Server) serveEditor(w http.ResponseWriter, _ *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if _, err := w.Write(editorContent); err != nil {
+		http.Error(w, "Failed to write response", http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) serveLogViewer(w http.ResponseWriter, _ *http.Request) {
+	// Serve log-viewer.html from embedded filesystem
+	logViewerContent, err := fs.ReadFile(s.webFS, "log-viewer.html")
+	if err != nil {
+		http.Error(w, "Failed to load log viewer", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if _, err := w.Write(logViewerContent); err != nil {
 		http.Error(w, "Failed to write response", http.StatusInternalServerError)
 	}
 }

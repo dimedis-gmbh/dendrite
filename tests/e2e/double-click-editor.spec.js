@@ -2,8 +2,8 @@ const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
 
-test.describe('Double-click Editor Opening', () => {
-    const testDataDir = path.join(__dirname, 'test-data');
+test.describe.serial('Double-click Editor Opening', () => {
+    const testDataDir = path.join(__dirname, 'test_data');
     
     test.beforeAll(async () => {
         // Ensure test directory exists
@@ -11,12 +11,12 @@ test.describe('Double-click Editor Opening', () => {
             fs.mkdirSync(testDataDir, { recursive: true });
         }
         
-        // Create test files
-        fs.writeFileSync(path.join(testDataDir, 'test.txt'), 'Text file content');
-        fs.writeFileSync(path.join(testDataDir, 'test.js'), 'console.log("JavaScript");');
-        fs.writeFileSync(path.join(testDataDir, 'test.md'), '# Markdown content');
-        fs.writeFileSync(path.join(testDataDir, 'test.bin'), Buffer.from([0x00, 0x01, 0x02, 0x03]));
-        fs.writeFileSync(path.join(testDataDir, 'test.pdf'), 'PDF mock content');
+        // Create/overwrite test files with specific content
+        fs.writeFileSync(path.join(testDataDir, 'dbl-test.txt'), 'Text file content');
+        fs.writeFileSync(path.join(testDataDir, 'dbl-test.js'), 'console.log("JavaScript");');
+        fs.writeFileSync(path.join(testDataDir, 'dbl-test.md'), '# Markdown content');
+        fs.writeFileSync(path.join(testDataDir, 'dbl-test.bin'), Buffer.from([0x00, 0x01, 0x02, 0x03]));
+        fs.writeFileSync(path.join(testDataDir, 'dbl-test.pdf'), 'PDF mock content');
         
         // Create a subdirectory
         const subDir = path.join(testDataDir, 'subfolder');
@@ -30,10 +30,21 @@ test.describe('Double-click Editor Opening', () => {
         await page.goto('http://127.0.0.1:3001');
         await page.waitForSelector('.file-row', { timeout: 10000 });
     });
+    
+    test.afterAll(async () => {
+        // Clean up test files
+        const filesToClean = ['dbl-test.txt', 'dbl-test.js', 'dbl-test.md', 'dbl-test.bin', 'dbl-test.pdf'];
+        filesToClean.forEach(file => {
+            const filePath = path.join(testDataDir, file);
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+        });
+    });
 
     test('should open text file in editor on double-click', async ({ page, context }) => {
         // Find the text file
-        const fileRow = page.locator('.file-row').filter({ hasText: 'test.txt' }).first();
+        const fileRow = page.locator('.file-row').filter({ hasText: 'dbl-test.txt' }).first();
         await expect(fileRow).toBeVisible({ timeout: 10000 });
         
         // Double-click should open editor in new window
@@ -43,16 +54,23 @@ test.describe('Double-click Editor Opening', () => {
         ]);
         
         await newPage.waitForLoadState();
-        await newPage.waitForSelector('#editor-container');
+        await newPage.waitForSelector('#editor-container', { timeout: 10000 });
+        
+        // Wait for Monaco to initialize
+        await newPage.waitForTimeout(1000);
         
         // Verify it's the editor
         const title = await newPage.title();
         expect(title).toContain('test.txt');
         expect(title).toContain('Dendrite Editor');
         
-        // Verify content loaded
-        const editor = newPage.locator('.simple-editor');
-        const content = await editor.inputValue();
+        // Verify content loaded using Monaco API
+        const content = await newPage.evaluate(() => {
+            if (window.editorApp && window.editorApp.editor) {
+                return window.editorApp.editor.getValue();
+            }
+            return '';
+        });
         expect(content).toBe('Text file content');
         
         await newPage.close();
@@ -68,13 +86,21 @@ test.describe('Double-click Editor Opening', () => {
         ]);
         
         await newPage.waitForLoadState();
-        await newPage.waitForSelector('#editor-container');
+        await newPage.waitForSelector('#editor-container', { timeout: 10000 });
+        
+        // Wait for Monaco to initialize
+        await newPage.waitForTimeout(1000);
         
         const title = await newPage.title();
         expect(title).toContain('test.js');
         
-        const editor = newPage.locator('.simple-editor');
-        const content = await editor.inputValue();
+        // Verify content loaded using Monaco API
+        const content = await newPage.evaluate(() => {
+            if (window.editorApp && window.editorApp.editor) {
+                return window.editorApp.editor.getValue();
+            }
+            return '';
+        });
         expect(content).toBe('console.log("JavaScript");');
         
         await newPage.close();
@@ -90,13 +116,21 @@ test.describe('Double-click Editor Opening', () => {
         ]);
         
         await newPage.waitForLoadState();
-        await newPage.waitForSelector('#editor-container');
+        await newPage.waitForSelector('#editor-container', { timeout: 10000 });
+        
+        // Wait for Monaco to initialize
+        await newPage.waitForTimeout(1000);
         
         const title = await newPage.title();
         expect(title).toContain('test.md');
         
-        const editor = newPage.locator('.simple-editor');
-        const content = await editor.inputValue();
+        // Verify content loaded using Monaco API
+        const content = await newPage.evaluate(() => {
+            if (window.editorApp && window.editorApp.editor) {
+                return window.editorApp.editor.getValue();
+            }
+            return '';
+        });
         expect(content).toBe('# Markdown content');
         
         await newPage.close();
@@ -173,7 +207,7 @@ test.describe('Double-click Editor Opening', () => {
     });
 
     test('right-click menu should still work for editable files', async ({ page }) => {
-        const fileRow = page.locator('.file-row').filter({ hasText: 'test.txt' }).first();
+        const fileRow = page.locator('.file-row').filter({ hasText: 'dbl-test.txt' }).first();
         await expect(fileRow).toBeVisible({ timeout: 10000 });
         
         // Right-click should show context menu
@@ -190,8 +224,8 @@ test.describe('Double-click Editor Opening', () => {
         await expect(page.locator('[data-action="edit-modal"]')).toBeVisible({ timeout: 5000 });
         await expect(page.locator('[data-action="edit-window"]')).toBeVisible({ timeout: 5000 });
         
-        // Click outside to close menu instead of using Escape
-        await page.click('body', { position: { x: 10, y: 10 } });
+        // Press Escape to close the context menu
+        await page.keyboard.press('Escape');
         await page.waitForTimeout(500);
         
         // Verify menu closed
