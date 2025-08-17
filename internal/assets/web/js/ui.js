@@ -546,9 +546,13 @@ class UI {
             // Navigate into directory
             this.loadFiles(path);
         } else {
-            // For files, check if it's editable
             const fileName = path.split('/').pop() || path;
-            if (this.isEditableFile(fileName)) {
+            
+            // Check if it's a log file
+            if (this.isLogFile(fileName)) {
+                // Open log files in the log viewer (new window)
+                this.openLogViewerWindow(path);
+            } else if (this.isEditableFile(fileName)) {
                 // Open editable files in the editor (new window)
                 this.openEditorWindow(path);
             } else {
@@ -732,54 +736,90 @@ class UI {
         const openItem = document.querySelector('[data-action="open"]');
         const editModalItem = document.querySelector('[data-action="edit-modal"]');
         const editWindowItem = document.querySelector('[data-action="edit-window"]');
+        const viewLogModalItem = document.querySelector('[data-action="view-log-modal"]');
+        const viewLogWindowItem = document.querySelector('[data-action="view-log-window"]');
         const renameItem = document.querySelector('[data-action="rename"]');
         const propertiesItem = document.querySelector('[data-action="properties"]');
         const selectedPaths = Array.from(this.selectedFiles);
         
-        // Reset all items to enabled state
+        // Reset all items to enabled state and hide log-specific items
         document.querySelectorAll('.menu-item').forEach(item => {
             item.classList.remove('disabled');
+            if (item.dataset.action && item.dataset.action.includes('view-log')) {
+                item.style.display = 'none';
+            }
         });
         
         // Disable "Open" for files (only enable for folders)
-        // Enable "Edit" only for single text files
+        // Enable appropriate viewer based on file type
         if (selectedPaths.length === 1) {
             const row = document.querySelector(`[data-path="${selectedPaths[0]}"]`);
             if (row && row.dataset.isDir !== 'true') {
                 openItem.classList.add('disabled');
-                // Check if it's a text file that can be edited
                 const fileName = selectedPaths[0].split('/').pop();
-                if (!this.isEditableFile(fileName)) {
+                
+                if (this.isLogFile(fileName)) {
+                    // Show log viewer options, hide edit options
+                    editModalItem.style.display = 'none';
+                    editWindowItem.style.display = 'none';
+                    if (viewLogModalItem) viewLogModalItem.style.display = 'block';
+                    if (viewLogWindowItem) viewLogWindowItem.style.display = 'block';
+                } else if (this.isEditableFile(fileName)) {
+                    // Show edit options, hide log viewer options
+                    editModalItem.style.display = 'block';
+                    editWindowItem.style.display = 'block';
+                    if (viewLogModalItem) viewLogModalItem.style.display = 'none';
+                    if (viewLogWindowItem) viewLogWindowItem.style.display = 'none';
+                } else {
+                    // Neither editable nor log file - disable all viewer options
                     editModalItem.classList.add('disabled');
                     editWindowItem.classList.add('disabled');
+                    if (viewLogModalItem) viewLogModalItem.style.display = 'none';
+                    if (viewLogWindowItem) viewLogWindowItem.style.display = 'none';
                 }
             } else {
-                // Disable edit for folders
+                // Disable edit and log viewer for folders
                 editModalItem.classList.add('disabled');
                 editWindowItem.classList.add('disabled');
+                if (viewLogModalItem) viewLogModalItem.style.display = 'none';
+                if (viewLogWindowItem) viewLogWindowItem.style.display = 'none';
             }
         } else if (selectedPaths.length > 1) {
-            // Disable "Open" and "Edit" for multiple selections
+            // Disable "Open", "Edit", and "View Log" for multiple selections
             openItem.classList.add('disabled');
             editModalItem.classList.add('disabled');
             editWindowItem.classList.add('disabled');
+            if (viewLogModalItem) viewLogModalItem.style.display = 'none';
+            if (viewLogWindowItem) viewLogWindowItem.style.display = 'none';
             // Also disable rename and properties for multiple selections
             renameItem.classList.add('disabled');
             propertiesItem.classList.add('disabled');
         } else {
-            // No selection - disable edit
+            // No selection - disable edit and log viewer
             editModalItem.classList.add('disabled');
             editWindowItem.classList.add('disabled');
+            if (viewLogModalItem) viewLogModalItem.style.display = 'none';
+            if (viewLogWindowItem) viewLogWindowItem.style.display = 'none';
         }
     }
     
+    isLogFile(fileName) {
+        const ext = fileName.split('.').pop().toLowerCase();
+        return ext === 'log';
+    }
+    
     isEditableFile(fileName) {
+        // Don't treat log files as editable since they have their own viewer
+        if (this.isLogFile(fileName)) {
+            return false;
+        }
+        
         const editableExtensions = [
             'txt', 'md', 'js', 'jsx', 'ts', 'tsx', 'json', 'html', 'htm', 
             'css', 'scss', 'sass', 'less', 'xml', 'svg', 'yaml', 'yml', 
             'toml', 'ini', 'conf', 'config', 'sh', 'bash', 'zsh', 'fish',
             'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp',
-            'php', 'sql', 'log', 'env', 'gitignore', 'dockerfile',
+            'php', 'sql', 'env', 'gitignore', 'dockerfile',
             'makefile', 'readme', 'license', 'editorconfig'
         ];
         
@@ -789,6 +829,59 @@ class UI {
         // Check by extension or by common filenames without extensions
         return editableExtensions.includes(ext) || 
                editableExtensions.includes(fileNameLower);
+    }
+    
+    openLogViewerWindow(filePath) {
+        // Open log viewer in a new window without browser controls
+        const logUrl = `/log-viewer.html?path=${encodeURIComponent(filePath)}`;
+        const windowName = `dendrite_log_${filePath.replace(/[^a-z0-9]/gi, '_')}`;
+        
+        const windowFeatures = [
+            'width=1024',
+            'height=768',
+            'menubar=no',
+            'toolbar=no',
+            'location=no',
+            'directories=no',
+            'status=no',
+            'scrollbars=yes',
+            'resizable=yes',
+            'copyhistory=no',
+            'personalbar=no',
+            'chrome=no',
+            'titlebar=no',
+            'addressbar=no'
+        ].join(',');
+        
+        const logWindow = window.open(logUrl, windowName, windowFeatures);
+        
+        if (!logWindow) {
+            showError('Failed to open log viewer. Please check if pop-ups are blocked.');
+        }
+    }
+    
+    openLogViewerModal(filePath) {
+        // Open log viewer in a modal (iframe)
+        const modal = document.getElementById('editor-modal');
+        const iframe = document.getElementById('editor-modal-iframe');
+        const filenameSpan = document.getElementById('editor-modal-filename');
+        
+        // Set the filename in the header
+        const filename = filePath.split('/').pop() || filePath;
+        filenameSpan.textContent = filename;
+        
+        // Set the iframe source to log viewer
+        iframe.src = `/log-viewer.html?path=${encodeURIComponent(filePath)}&mode=modal`;
+        
+        // Show the modal
+        modal.classList.remove('hidden');
+        
+        // Setup close button
+        const closeBtn = modal.querySelector('.editor-modal-close');
+        closeBtn.onclick = () => {
+            iframe.src = '';
+            modal.classList.add('hidden');
+        };
     }
     
     openEditorWindow(filePath) {
@@ -1005,6 +1098,18 @@ class UI {
             case 'properties':
                 if (selectedPaths.length === 1) {
                     this.showProperties(selectedPaths[0]);
+                }
+                break;
+            
+            case 'view-log-modal':
+                if (selectedPaths.length === 1) {
+                    this.openLogViewerModal(selectedPaths[0]);
+                }
+                break;
+            
+            case 'view-log-window':
+                if (selectedPaths.length === 1) {
+                    this.openLogViewerWindow(selectedPaths[0]);
                 }
                 break;
         }
@@ -1245,6 +1350,8 @@ class UI {
                 break;
                 
             case 'Escape':
+                // Close context menu if open
+                this.hideContextMenu();
                 // Close any open modals
                 document.querySelectorAll('.modal').forEach(modal => {
                     modal.classList.add('hidden');
