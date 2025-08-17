@@ -248,6 +248,43 @@ The editor can open any text-based file, including:
 - **Ctrl/Cmd+H**: Replace
 - **Escape**: Close modal editor (with confirmation if unsaved)
 
+## Log Viewer
+
+Dendrite includes a specialized log viewer for viewing and monitoring log files (.log) directly in the browser:
+
+### Opening Log Files
+
+- **Double-click**: Double-click any .log file to open it in a new window
+- **Right-click menu**: Right-click and choose "View Log (window)" to open in a new browser window
+
+### Log Viewer Features
+
+- **Tail-like display**: Shows the last N lines of the log file (default: 150)
+- **Real-time following**: Enable "Follow" mode to monitor log files in real-time via WebSocket
+- **Search and filter**: Filter log entries with text search or regular expressions
+- **Case-sensitive search**: Toggle case-sensitive matching for precise filtering
+- **Soft-wrap**: Toggle line wrapping for better readability of long lines
+- **Auto-scroll**: Automatically scrolls to bottom when new content arrives in follow mode
+- **Connection status**: Visual indicator shows WebSocket connection status
+- **Line counter**: Displays the current number of lines shown
+
+### Log Viewer Controls
+
+- **Search**: Enter text to filter log entries (press Enter to apply)
+- **Case-sensitive (Aa)**: Toggle case-sensitive search
+- **Regex (.*) **: Toggle regular expression mode for advanced pattern matching
+- **Show last N lines**: Adjust how many lines to display (default: 150)
+- **Reload**: Refresh the log content
+- **Soft-wrap**: Toggle line wrapping
+- **Follow**: Enable real-time log monitoring
+
+### Important Notes
+
+- Filtering happens **before** the line limit is applied, so "Last 150 lines" means the last 150 lines of filtered results
+- In follow mode, the viewer clears existing content and only shows new lines
+- Follow mode can be stopped by unchecking the Follow checkbox or pressing Escape
+- Only files with .log extension can be viewed in the log viewer
+
 ## Keyboard Shortcuts
 
 ### File Manager Shortcuts
@@ -349,8 +386,11 @@ npm run test:ci
 # Kill any dendrite processes and run tests
 npm run test:local
 
-# Simulate the exact CI environment locally
-./.github/test-ci-locally.sh
+# Simulate the exact CI environment locally (without Docker)
+./test-ci-locally.sh
+
+# Or use Docker for complete CI environment simulation
+./docker-ci-test.sh
 ```
 
 The tests automatically:
@@ -392,35 +432,36 @@ go test -cover ./...
 
 ### Testing with Docker
 
-To ensure your changes work across different environments and match the CI pipeline, several Docker-based testing scripts are provided:
+While the CI pipeline now uses native GitHub Actions for Playwright tests, Docker-based testing is still available for complete environment simulation:
 
 #### 1. Full CI Environment Simulation (`docker-ci-test.sh`)
 
-This script reproduces the exact GitHub Actions environment locally:
+This script reproduces a complete testing environment locally using Docker:
 
 ```bash
 ./docker-ci-test.sh
 ```
 
 What it does:
-- Builds a Docker image matching GitHub Actions' Ubuntu environment
-- Installs the same versions of Go, Node.js, and dependencies
-- Runs the complete test suite as it would in CI
-- Helps catch platform-specific issues before pushing
+- Builds a Docker image with Ubuntu, Go, Node.js, and Playwright
+- Runs all tests in an isolated environment
+- Useful for debugging platform-specific issues
+- Note: The actual CI uses native Playwright action, not Docker
 
 #### 2. CI Simulation Without Docker (`test-ci-locally.sh`)
 
-Located in `.github/test-ci-locally.sh`, this script simulates CI behavior without Docker:
+This script simulates CI behavior without Docker:
 
 ```bash
-./.github/test-ci-locally.sh
+./test-ci-locally.sh
 ```
 
 What it does:
 - Builds the dendrite binary
-- Starts dendrite manually (like the old CI did)
-- Runs tests to reproduce port conflict issues
-- Useful for debugging CI-specific problems
+- Installs npm dependencies and Playwright Chromium
+- Runs Go tests with race detection
+- Runs Playwright tests with Chromium only (like in CI)
+- Generates HTML test report
 
 #### 3. Linter Testing (`test-golangci-lint.sh`)
 
