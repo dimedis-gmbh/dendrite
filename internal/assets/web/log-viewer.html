@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Log Viewer - Dendrite</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
+        }
+        
+        html, body { 
+            height: 100%; 
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        
+        #container { 
+            width: 100%; 
+            height: 100%; 
+            display: flex; 
+            flex-direction: column;
+            background: #1e1e1e;
+        }
+        
+        /* Header with file path */
+        #header {
+            background: linear-gradient(to bottom, #f8f8f8, #e8e8e8);
+            border-bottom: 1px solid #d0d0d0;
+            padding: 8px 12px;
+            font-size: 13px;
+            color: #333;
+            font-weight: 500;
+        }
+        
+        /* Control bar */
+        #control-bar {
+            background: linear-gradient(to bottom, #f8f8f8, #e8e8e8);
+            border-bottom: 1px solid #d0d0d0;
+            padding: 8px 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        
+        /* Search group */
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        #search-input {
+            width: 250px;
+            padding: 4px 8px;
+            border: 1px solid #d0d0d0;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+        
+        /* Icon buttons */
+        .icon-btn {
+            width: 28px;
+            height: 28px;
+            padding: 4px;
+            border: 1px solid #d0d0d0;
+            background: linear-gradient(to bottom, #fff, #f0f0f0);
+            border-radius: 3px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        
+        .icon-btn:hover {
+            background: linear-gradient(to bottom, #e8e8ff, #d8d8ff);
+            border-color: #0078d4;
+        }
+        
+        .icon-btn.active {
+            background: linear-gradient(to bottom, #d8d8ff, #c8c8ff);
+            border-color: #0078d4;
+        }
+        
+        .icon-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: #333;
+        }
+        
+        .icon-btn.active svg {
+            fill: #0078d4;
+        }
+        
+        /* Lines control */
+        #lines-input {
+            width: 60px;
+            padding: 4px 6px;
+            border: 1px solid #d0d0d0;
+            border-radius: 3px;
+            font-size: 13px;
+            text-align: center;
+        }
+        
+        #reload-logs {
+            padding: 4px 12px;
+            border: 1px solid #d0d0d0;
+            background: linear-gradient(to bottom, #fff, #f0f0f0);
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        #reload-logs:hover {
+            background: linear-gradient(to bottom, #e8e8ff, #d8d8ff);
+            border-color: #0078d4;
+        }
+        
+        #reload-logs svg {
+            width: 14px;
+            height: 14px;
+            fill: #333;
+        }
+        
+        /* Checkboxes */
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 13px;
+            color: #333;
+        }
+        
+        .checkbox-group input[type="checkbox"] {
+            cursor: pointer;
+        }
+        
+        /* Log content area */
+        #log-container {
+            flex: 1;
+            overflow: auto;
+            background: #1e1e1e;
+            padding: 8px;
+            font-family: "Consolas", "Monaco", "Courier New", monospace;
+            font-size: 12px;
+            line-height: 1.4;
+            color: #d4d4d4;
+        }
+        
+        #log-content {
+            white-space: pre;
+        }
+        
+        #log-content.soft-wrap {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        /* Status bar */
+        #status-bar {
+            background: #007ACC;
+            color: white;
+            padding: 4px 12px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        /* Loading indicator */
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Disabled state */
+        .disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        
+        /* Separator */
+        .separator {
+            width: 1px;
+            height: 20px;
+            background: #d0d0d0;
+        }
+        
+        /* Connection status indicator */
+        #connection-status {
+            font-size: 12px;
+            margin-left: 8px;
+        }
+        
+        #connection-status.connected {
+            color: #28a745;
+        }
+        
+        #connection-status.disconnected {
+            color: #dc3545;
+        }
+        
+        #connection-status.connecting {
+            color: #ffc107;
+        }
+        
+    </style>
+</head>
+<body>
+    <div id="container">
+        <!-- Header with file path -->
+        <div id="header">
+            <span id="file-path">/var/log/messages</span>
+        </div>
+        
+        <!-- Control bar -->
+        <div id="control-bar">
+            <!-- Search group -->
+            <div class="control-group">
+                <input type="text" id="search-input" placeholder="search">
+                <button class="icon-btn" id="case-btn" title="Toggle case sensitive search">
+                    <svg viewBox="0 0 16 16">
+                        <path d="M8.5 3.5L11 8h-5l2.5-4.5zM4.5 9h7l-3.5 6-3.5-6z"/>
+                        <text x="8" y="12" font-size="8" text-anchor="middle" fill="currentColor">A</text>
+                    </svg>
+                </button>
+                <button class="icon-btn" id="regex-btn" title="Toggle regex search">
+                    <svg viewBox="0 0 16 16">
+                        <path d="M2 4h3v1H3v6h2v1H2V4zm11 0v8h-3v-1h2V5h-2V4h3zm-7 2v1h4V6H6zm0 3v1h4V9H6z"/>
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- Lines control -->
+            <div class="control-group">
+                <label for="lines-input" style="font-size: 13px; color: #333;">Show last</label>
+                <input type="number" id="lines-input" value="150" min="1">
+                <span style="font-size: 13px; color: #333;">Lines</span>
+                <button id="reload-logs">
+                    <svg viewBox="0 0 16 16">
+                        <path d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41zm-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9z"/>
+                        <path fill-rule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5.002 5.002 0 0 0 8 3zM3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9H3.1z"/>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="separator"></div>
+            
+            <!-- Options -->
+            <div class="checkbox-group">
+                <input type="checkbox" id="soft-wrap">
+                <label for="soft-wrap">Soft-wrap</label>
+            </div>
+            
+            <div class="checkbox-group">
+                <input type="checkbox" id="follow">
+                <label for="follow">Follow</label>
+            </div>
+            
+        </div>
+        
+        <!-- Log content area -->
+        <div id="log-container">
+            <pre id="log-content"></pre>
+        </div>
+        
+        <!-- Status bar -->
+        <div id="status-bar">
+            <div class="status-item">
+                <span id="status-text">Ready</span>
+                <span id="status-spinner" class="spinner" style="display: none;"></span>
+            </div>
+            <div class="status-item">
+                <span id="connection-status" class="disconnected">●</span>
+            </div>
+            <div class="status-item">
+                <span id="line-count">0 lines</span>
+            </div>
+        </div>
+    </div>
+    
+    <script src="/js/log-viewer.js"></script>
+</body>
+</html>
