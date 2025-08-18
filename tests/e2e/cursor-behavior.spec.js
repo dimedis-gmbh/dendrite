@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 test.describe('File Manager Cursor Behavior', () => {
-    const testDataDir = path.join(__dirname, 'test-data');
+    const testDataDir = path.join(__dirname, 'test_data');
 
     test.beforeAll(async () => {
         // Ensure test directory exists
