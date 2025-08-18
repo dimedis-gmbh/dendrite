@@ -512,3 +512,72 @@ body {
     border: none;
     border-radius: 0 0 8px 8px;
 }
+
+/* Image Editor Modal Styles */
+#image-editor-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+}
+
+#image-editor-modal.hidden {
+    display: none;
+}
+
+#image-editor-modal .editor-modal-content {
+    width: 98%;
+    height: 98%;
+    max-width: none;
+    max-height: none;
+    display: flex;
+    flex-direction: column;
+}
+
+#image-editor-modal .editor-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    background: #f8f8f8;
+    border-bottom: 1px solid #ddd;
+    border-radius: 8px 8px 0 0;
+}
+
+#image-editor-modal-filename {
+    font-weight: bold;
+    font-size: 16px;
+}
+
+.image-editor-modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #666;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.image-editor-modal-close:hover {
+    color: #000;
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+}
+
+#image-editor-modal-iframe {
+    flex: 1;
+    width: 100%;
+    border: none;
+    border-radius: 0 0 8px 8px;
+}

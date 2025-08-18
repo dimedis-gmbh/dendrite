@@ -12,6 +12,7 @@ Dendrite is a web-based file manager written in Go that allows managing remote f
 - 🗂️ **Windows Explorer-like Interface**: Familiar UI with file browsing, selection, and navigation
 - 📁 **Complete File Operations**: Upload, download, move, copy, paste, delete, and create folders
 - ✏️ **Built-in Text Editor**: Edit text files directly in the browser with syntax highlighting support
+- 🖼️ **Built-in Image Editor**: Edit images with cropping, resizing, filters, and annotations
 - 🎯 **Drag & Drop Support**: Upload files and move items with drag and drop
 - 📦 **ZIP Downloads**: Download multiple files or folders as a ZIP archive
 - 💾 **Quota Management**: Set storage limits with user-friendly error messages
@@ -247,6 +248,51 @@ The editor can open any text-based file, including:
 - **Ctrl/Cmd+F**: Find
 - **Ctrl/Cmd+H**: Replace
 - **Escape**: Close modal editor (with confirmation if unsaved)
+
+## Built-in Image Editor
+
+Dendrite includes a powerful built-in image editor powered by TUI Image Editor for editing images directly in the browser:
+
+### Opening Images in the Editor
+
+There are multiple ways to open images in the editor:
+
+1. **Double-click**: Double-click any image file (.png, .jpg, .jpeg, .gif, .bmp, .webp) to open it in a new window
+2. **Right-click menu**: Right-click and choose:
+   - "Edit Image (modal)" - Opens the editor in a modal overlay
+   - "Edit Image (new window)" - Opens the editor in a new browser window
+
+### Image Editor Features
+
+- **Cropping**: Select and crop areas with aspect ratio options
+- **Resizing**: Change image dimensions while maintaining aspect ratio
+- **Rotation**: Rotate images in 90-degree increments or free rotation
+- **Flip**: Flip images horizontally or vertically
+- **Drawing**: Freehand drawing with brush size and color options
+- **Shapes**: Add rectangles, circles, triangles, and other shapes
+- **Text**: Add text annotations with font and color customization
+- **Icons**: Insert pre-defined icons and symbols
+- **Filters**: Apply filters like grayscale, sepia, blur, sharpen, emboss, and more
+- **Adjustments**: Fine-tune brightness, contrast, saturation, and other properties
+- **Undo/Redo**: Full history support for all operations
+- **Save**: Save edited images back to the server
+
+### Supported Image Formats
+
+The image editor supports the following formats:
+- PNG (.png)
+- JPEG (.jpg, .jpeg)
+- GIF (.gif)
+- BMP (.bmp)
+- WebP (.webp)
+
+### Image Editor Keyboard Shortcuts
+
+- **Ctrl/Cmd+S**: Save image
+- **Ctrl/Cmd+Z**: Undo last action
+- **Ctrl/Cmd+Y**: Redo action (Ctrl/Cmd+Shift+Z on Mac)
+- **Delete**: Delete selected object
+- **Escape**: Deselect object or close modal editor
 
 ## Log Viewer
 

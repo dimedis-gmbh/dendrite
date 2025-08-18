@@ -66,6 +66,8 @@
             <div class="menu-item" data-action="open">Open</div>
             <div class="menu-item" data-action="edit-modal">Edit (modal)</div>
             <div class="menu-item" data-action="edit-window">Edit (new window)</div>
+            <div class="menu-item" data-action="edit-image-modal" style="display: none;">Edit Image (modal)</div>
+            <div class="menu-item" data-action="edit-image-window" style="display: none;">Edit Image (new window)</div>
             <div class="menu-item" data-action="view-log-modal" style="display: none;">View Log (modal)</div>
             <div class="menu-item" data-action="view-log-window" style="display: none;">View Log (new window)</div>
             <div class="menu-item" data-action="download">Download</div>
@@ -122,6 +124,17 @@
                     <button class="editor-modal-close">&times;</button>
                 </div>
                 <iframe id="editor-modal-iframe" src=""></iframe>
+            </div>
+        </div>
+        
+        <!-- Image Editor Modal -->
+        <div id="image-editor-modal" class="modal hidden">
+            <div class="editor-modal-content">
+                <div class="editor-modal-header">
+                    <span id="image-editor-modal-filename"></span>
+                    <button class="image-editor-modal-close">&times;</button>
+                </div>
+                <iframe id="image-editor-modal-iframe" src=""></iframe>
             </div>
         </div>
     </div>
