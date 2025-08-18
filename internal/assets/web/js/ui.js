@@ -548,12 +548,15 @@ class UI {
         } else {
             const fileName = path.split('/').pop() || path;
             
-            // Check if it's a log file
+            // Check file type and open appropriate viewer
             if (this.isLogFile(fileName)) {
                 // Open log files in the log viewer (new window)
                 this.openLogViewerWindow(path);
+            } else if (this.isImageFile(fileName)) {
+                // Open image files in the image editor (new window)
+                this.openImageEditorWindow(path);
             } else if (this.isEditableFile(fileName)) {
-                // Open editable files in the editor (new window)
+                // Open editable files in the text editor (new window)
                 this.openEditorWindow(path);
             } else {
                 // For non-editable files, show properties
@@ -736,16 +739,18 @@ class UI {
         const openItem = document.querySelector('[data-action="open"]');
         const editModalItem = document.querySelector('[data-action="edit-modal"]');
         const editWindowItem = document.querySelector('[data-action="edit-window"]');
+        const editImageModalItem = document.querySelector('[data-action="edit-image-modal"]');
+        const editImageWindowItem = document.querySelector('[data-action="edit-image-window"]');
         const viewLogModalItem = document.querySelector('[data-action="view-log-modal"]');
         const viewLogWindowItem = document.querySelector('[data-action="view-log-window"]');
         const renameItem = document.querySelector('[data-action="rename"]');
         const propertiesItem = document.querySelector('[data-action="properties"]');
         const selectedPaths = Array.from(this.selectedFiles);
         
-        // Reset all items to enabled state and hide log-specific items
+        // Reset all items to enabled state and hide log-specific and image-specific items
         document.querySelectorAll('.menu-item').forEach(item => {
             item.classList.remove('disabled');
-            if (item.dataset.action && item.dataset.action.includes('view-log')) {
+            if (item.dataset.action && (item.dataset.action.includes('view-log') || item.dataset.action.includes('edit-image'))) {
                 item.style.display = 'none';
             }
         });
@@ -759,21 +764,37 @@ class UI {
                 const fileName = selectedPaths[0].split('/').pop();
                 
                 if (this.isLogFile(fileName)) {
-                    // Show log viewer options, hide edit options
+                    // Show log viewer options, hide edit and image options
                     editModalItem.style.display = 'none';
                     editWindowItem.style.display = 'none';
+                    if (editImageModalItem) editImageModalItem.style.display = 'none';
+                    if (editImageWindowItem) editImageWindowItem.style.display = 'none';
                     if (viewLogModalItem) viewLogModalItem.style.display = 'block';
                     if (viewLogWindowItem) viewLogWindowItem.style.display = 'block';
+                } else if (this.isImageFile(fileName)) {
+                    // Show image editor options, hide text edit and log options
+                    editModalItem.style.display = 'none';
+                    editWindowItem.style.display = 'none';
+                    if (editImageModalItem) editImageModalItem.style.display = 'block';
+                    if (editImageWindowItem) editImageWindowItem.style.display = 'block';
+                    if (viewLogModalItem) viewLogModalItem.style.display = 'none';
+                    if (viewLogWindowItem) viewLogWindowItem.style.display = 'none';
                 } else if (this.isEditableFile(fileName)) {
-                    // Show edit options, hide log viewer options
+                    // Show text edit options, hide image and log options
                     editModalItem.style.display = 'block';
                     editWindowItem.style.display = 'block';
+                    if (editImageModalItem) editImageModalItem.style.display = 'none';
+                    if (editImageWindowItem) editImageWindowItem.style.display = 'none';
                     if (viewLogModalItem) viewLogModalItem.style.display = 'none';
                     if (viewLogWindowItem) viewLogWindowItem.style.display = 'none';
                 } else {
-                    // Neither editable nor log file - disable all viewer options
+                    // Not editable - disable all edit options
                     editModalItem.classList.add('disabled');
                     editWindowItem.classList.add('disabled');
+                    editModalItem.style.display = 'block';
+                    editWindowItem.style.display = 'block';
+                    if (editImageModalItem) editImageModalItem.style.display = 'none';
+                    if (editImageWindowItem) editImageWindowItem.style.display = 'none';
                     if (viewLogModalItem) viewLogModalItem.style.display = 'none';
                     if (viewLogWindowItem) viewLogWindowItem.style.display = 'none';
                 }
@@ -808,9 +829,14 @@ class UI {
         return ext === 'log';
     }
     
+    isImageFile(fileName) {
+        const ext = fileName.split('.').pop().toLowerCase();
+        return ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'].includes(ext);
+    }
+    
     isEditableFile(fileName) {
-        // Don't treat log files as editable since they have their own viewer
-        if (this.isLogFile(fileName)) {
+        // Don't treat log files or image files as text-editable since they have their own viewers
+        if (this.isLogFile(fileName) || this.isImageFile(fileName)) {
             return false;
         }
         
@@ -1026,6 +1052,73 @@ class UI {
         }
     }
     
+    openImageEditorWindow(filePath) {
+        // Open image editor in a new window without browser controls
+        const editorUrl = `/image-editor.html?path=${encodeURIComponent(filePath)}`;
+        const windowName = `dendrite_image_editor_${filePath.replace(/[^a-z0-9]/gi, '_')}`;
+        
+        // Use maximum restrictions to hide browser chrome
+        const windowFeatures = [
+            'width=1200',
+            'height=800',
+            'menubar=no',
+            'toolbar=no',
+            'location=no',
+            'directories=no',
+            'status=no',
+            'scrollbars=yes',
+            'resizable=yes',
+            'copyhistory=no',
+            'personalbar=no',
+            'chrome=no',
+            'titlebar=no',
+            'addressbar=no'
+        ].join(',');
+        
+        // Open the image editor window
+        const editorWindow = window.open(editorUrl, windowName, windowFeatures);
+        
+        if (!editorWindow) {
+            showError('Failed to open image editor. Please check if pop-ups are blocked.');
+        }
+    }
+    
+    openImageEditorModal(filePath) {
+        // Open image editor in a modal (iframe)
+        const modal = document.getElementById('image-editor-modal');
+        const iframe = document.getElementById('image-editor-modal-iframe');
+        const filenameSpan = document.getElementById('image-editor-modal-filename');
+        
+        console.log('Opening image editor for file:', filePath);
+        
+        // Set the filename in the header
+        const filename = filePath.split('/').pop() || filePath;
+        filenameSpan.textContent = filename;
+        
+        // Set the iframe source
+        iframe.src = `/image-editor.html?path=${encodeURIComponent(filePath)}&modal=true`;
+        
+        // Show the modal
+        modal.classList.remove('hidden');
+        
+        // Setup close button
+        const closeBtn = modal.querySelector('.image-editor-modal-close');
+        closeBtn.onclick = () => {
+            iframe.src = '';
+            modal.classList.add('hidden');
+        };
+        
+        // Listen for close message from iframe
+        const messageHandler = (e) => {
+            if (e.data && e.data.action === 'closeImageEditor') {
+                iframe.src = '';
+                modal.classList.add('hidden');
+                window.removeEventListener('message', messageHandler);
+            }
+        };
+        window.addEventListener('message', messageHandler);
+    }
+    
     hideContextMenu() {
         document.getElementById('context-menu').classList.add('hidden');
     }
@@ -1062,6 +1155,18 @@ class UI {
             case 'edit-window':
                 if (selectedPaths.length === 1) {
                     this.openEditorWindow(selectedPaths[0]);
+                }
+                break;
+                
+            case 'edit-image-modal':
+                if (selectedPaths.length === 1) {
+                    this.openImageEditorModal(selectedPaths[0]);
+                }
+                break;
+                
+            case 'edit-image-window':
+                if (selectedPaths.length === 1) {
+                    this.openImageEditorWindow(selectedPaths[0]);
                 }
                 break;
                 

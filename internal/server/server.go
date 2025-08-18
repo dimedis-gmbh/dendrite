@@ -87,11 +87,15 @@ func (s *Server) setupRoutes() {
 	fileServer := http.FileServer(http.FS(s.webFS))
 	s.Router.PathPrefix("/css/").Handler(fileServer)
 	s.Router.PathPrefix("/js/").Handler(fileServer)
+	s.Router.PathPrefix("/lib/").Handler(fileServer)
 	s.Router.PathPrefix("/img/").Handler(fileServer)
 	s.Router.PathPrefix("/images/").Handler(fileServer)
 
 	// Serve editor.html for the editor route
 	s.Router.Path("/editor.html").HandlerFunc(s.serveEditor)
+
+	// Serve image-editor.html for the image editor route
+	s.Router.Path("/image-editor.html").HandlerFunc(s.serveImageEditor)
 
 	// Serve log-viewer.html for the log viewer route
 	s.Router.Path("/log-viewer.html").HandlerFunc(s.serveLogViewer)
@@ -190,6 +194,20 @@ func (s *Server) serveEditor(w http.ResponseWriter, _ *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if _, err := w.Write(editorContent); err != nil {
+		http.Error(w, "Failed to write response", http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) serveImageEditor(w http.ResponseWriter, _ *http.Request) {
+	// Serve image-editor.html from embedded filesystem
+	imageEditorContent, err := fs.ReadFile(s.webFS, "image-editor.html")
+	if err != nil {
+		http.Error(w, "Failed to load image editor", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if _, err := w.Write(imageEditorContent); err != nil {
 		http.Error(w, "Failed to write response", http.StatusInternalServerError)
 	}
 }
