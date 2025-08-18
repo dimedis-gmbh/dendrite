@@ -1,3 +1,0 @@
-This is a sample text file.
-It has multiple lines.
-For testing the editor.
