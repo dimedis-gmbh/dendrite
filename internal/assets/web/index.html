@@ -1,146 +1,709 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full bg-gray-50">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dendrite File Manager</title>
     <link rel="icon" type="image/svg+xml" href="/images/favicon.svg">
-    <link rel="stylesheet" href="/css/styles.css">
-    <link rel="stylesheet" href="/css/fontawesome-icons.css">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            200: '#bfdbfe',
+                            300: '#93c5fd',
+                            400: '#60a5fa',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                            900: '#1e3a8a'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Custom styles for Tailwind components -->
+    <style>
+        /* Custom scrollbar styles */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        
+        /* File row hover effect */
+        .file-row-hover:hover {
+            background-color: #f9fafb;
+        }
+        
+        /* Tab indicator animation */
+        .tab-indicator {
+            transition: transform 0.3s ease-in-out, width 0.3s ease-in-out;
+        }
+    </style>
 </head>
-<body>
-    <div id="app">
-        <!-- Status Bar -->
-        <div id="status-bar">
-            <div id="session-info" class="hidden">
-                <i class="fa fa-exclamation-triangle session-alert hidden" id="session-alert"></i>
-                <i class="fa fa-clock-o"></i>
-                <span id="session-text">Session expires in...</span>
-            </div>
-            <div id="quota-info">
-                <span id="quota-text">Loading...</span>
-                <div id="quota-bar">
-                    <div id="quota-fill"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Toolbar -->
-        <div id="toolbar">
-            <button id="btn-back" title="Back" disabled>← Back</button>
-            <button id="btn-up" title="Up">↑ Up</button>
-            <button id="btn-refresh" title="Refresh">⟲ Refresh</button>
-            <span id="path-display">/</span>
-            <div id="toolbar-right">
-                <button id="btn-upload" title="Upload Files">📁 Upload</button>
-                <button id="btn-new-folder" title="New Folder">📂 New Folder</button>
-                <button id="btn-download" title="Download Selected">💾 Download</button>
-                <button id="btn-download-zip" title="Download Selected as ZIP">📦 ZIP</button>
-            </div>
-        </div>
-
-        <!-- Main Content -->
-        <div id="main-content">
-            <!-- File List -->
-            <div id="file-list-container">
-                <table id="file-list">
-                    <thead>
-                        <tr>
-                            <th class="col-select"><input type="checkbox" id="select-all"></th>
-                            <th class="col-icon"></th>
-                            <th class="col-name" data-sort="name">Name</th>
-                            <th class="col-size" data-sort="size">Size</th>
-                            <th class="col-type" data-sort="type">Type</th>
-                            <th class="col-modified" data-sort="modified">Modified</th>
-                        </tr>
-                    </thead>
-                    <tbody id="file-list-body">
-                        <!-- Files will be loaded here -->
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Context Menu -->
-        <div id="context-menu" class="hidden">
-            <div class="menu-item" data-action="open">Open</div>
-            <div class="menu-item" data-action="edit-modal">Edit (modal)</div>
-            <div class="menu-item" data-action="edit-window">Edit (new window)</div>
-            <div class="menu-item" data-action="edit-image-modal" style="display: none;">Edit Image (modal)</div>
-            <div class="menu-item" data-action="edit-image-window" style="display: none;">Edit Image (new window)</div>
-            <div class="menu-item" data-action="view-log-modal" style="display: none;">View Log (modal)</div>
-            <div class="menu-item" data-action="view-log-window" style="display: none;">View Log (new window)</div>
-            <div class="menu-item" data-action="download">Download</div>
-            <div class="menu-separator"></div>
-            <div class="menu-item" data-action="cut">Cut</div>
-            <div class="menu-item" data-action="copy">Copy</div>
-            <div class="menu-item" data-action="paste">Paste</div>
-            <div class="menu-separator"></div>
-            <div class="menu-item" data-action="rename">Rename</div>
-            <div class="menu-item" data-action="delete">Delete</div>
-            <div class="menu-separator"></div>
-            <div class="menu-item" data-action="properties">Properties</div>
-        </div>
-
-        <!-- Upload Modal -->
-        <div id="upload-modal" class="modal hidden">
-            <div class="modal-content">
-                <span class="close">&times;</span>
-                <h2>Upload Files</h2>
-                <div id="drop-zone">
-                    <p>Drag and drop files here or click to select</p>
-                    <input type="file" id="file-input" multiple>
-                </div>
-                <div id="upload-progress" class="hidden">
-                    <div class="progress-bar">
-                        <div class="progress-fill"></div>
+<body class="h-full">
+    <div class="min-h-full">
+        <!-- Navigation Header -->
+        <nav class="bg-white shadow-sm border-b border-gray-200">
+            <div class="mx-auto max-w-full px-4 sm:px-6 lg:px-8">
+                <div class="flex h-16 justify-between">
+                    <div class="flex">
+                        <!-- Logo/Brand -->
+                        <div class="flex flex-shrink-0 items-center">
+                            <svg class="h-8 w-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+                            </svg>
+                            <span class="ml-2 text-xl font-semibold text-gray-900">Dendrite</span>
+                        </div>
+                        
+                        <!-- Navigation Tabs -->
+                        <div class="hidden sm:ml-8 sm:flex sm:space-x-8">
+                            <a href="#" data-tab="file-manager" class="tab-link inline-flex items-center border-b-2 border-indigo-500 px-1 pt-1 text-sm font-medium text-gray-900">
+                                <svg class="mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+                                </svg>
+                                File Manager
+                            </a>
+                            <a href="#" data-tab="command" class="tab-link inline-flex items-center border-b-2 border-transparent px-1 pt-1 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700">
+                                <svg class="mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                </svg>
+                                Command
+                            </a>
+                            <a href="#" data-tab="console" class="tab-link inline-flex items-center border-b-2 border-transparent px-1 pt-1 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700">
+                                <svg class="mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                                </svg>
+                                Console
+                            </a>
+                            <a href="#" data-tab="monitoring" class="tab-link inline-flex items-center border-b-2 border-transparent px-1 pt-1 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700">
+                                <svg class="mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                                </svg>
+                                Monitoring
+                            </a>
+                        </div>
                     </div>
-                    <span id="upload-status">Uploading...</span>
+                    
+                    <!-- Right side items -->
+                    <div class="flex items-center space-x-4">
+                        <!-- Session info -->
+                        <div id="session-info" class="hidden items-center space-x-2 text-sm text-gray-500">
+                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <span id="session-text">Session expires in...</span>
+                        </div>
+                        
+                        <!-- Quota info -->
+                        <div id="quota-info" class="flex items-center space-x-2">
+                            <span id="quota-text" class="text-sm text-gray-600">Loading...</span>
+                            <div class="w-32 bg-gray-200 rounded-full h-2 overflow-hidden">
+                                <div id="quota-fill" class="bg-indigo-600 h-full transition-all duration-300" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
+        </nav>
 
-        <!-- Properties Modal -->
-        <div id="properties-modal" class="modal hidden">
-            <div class="modal-content">
-                <span class="close">&times;</span>
-                <h2>File Properties</h2>
-                <div id="properties-content">
-                    <!-- Properties will be loaded here -->
+        <!-- Tab Content Areas -->
+        <main class="flex-1">
+            <!-- File Manager Tab -->
+            <div id="tab-file-manager" class="tab-content">
+                <!-- File Manager Toolbar -->
+                <div class="bg-white border-b border-gray-200">
+                    <div class="px-4 sm:px-6 lg:px-8 py-3">
+                        <div class="flex items-center justify-between">
+                            <!-- Navigation buttons -->
+                            <div class="flex items-center space-x-2">
+                                <button id="btn-up" class="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path>
+                                    </svg>
+                                    Up
+                                </button>
+                                <button id="btn-refresh" class="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                                    <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                    </svg>
+                                    Refresh
+                                </button>
+                            </div>
+                            
+                            <!-- Path display -->
+                            <div class="flex-1 mx-4">
+                                <div class="flex items-center px-3 py-1.5 bg-gray-50 border border-gray-300 rounded-md">
+                                    <button id="btn-home" type="button" title="Go to root" class="mr-2 inline-flex items-center justify-center h-7 w-7 rounded-md text-gray-500 hover:text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed">
+                                        <span class="sr-only">Go to root</span>
+                                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
+                                        </svg>
+                                    </button>
+                                    <span id="path-display" class="text-sm text-gray-900">/</span>
+                                </div>
+                            </div>
+                            
+                            <!-- Action buttons -->
+                            <div class="flex items-center space-x-2">
+                                <button id="btn-upload" class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                                    <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                                    </svg>
+                                    Upload
+                                </button>
+                                <button id="btn-new-folder" class="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                                    <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                                    </svg>
+                                    New Folder
+                                </button>
+                                <button id="btn-paste" title="Paste the selected items in the current folder" class="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                                    <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                                    </svg>
+                                    Paste
+                                </button>
+                                <button id="btn-download" title="Download selected file" class="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path>
+                                    </svg>
+                                    Download
+                                </button>
+                                <button id="btn-download-zip" title="Download selected file(s) as ZIP archive" class="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                    </svg>
+                                    ZIP
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- File List Container -->
+                <div id="file-list-container" class="px-4 sm:px-6 lg:px-8 py-4">
+                    <div class="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
+                        <table id="file-list" class="min-w-full divide-y divide-gray-300">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th scope="col" class="relative px-6 sm:w-12 sm:px-6">
+                                        <input type="checkbox" id="select-all" class="absolute left-4 top-1/2 -mt-2 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                    </th>
+                                    <th scope="col" class="w-8"></th>
+                                    <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900"></th>
+                                    <th scope="col" data-sort="name" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 cursor-pointer hover:bg-gray-100">
+                                        <div class="flex items-center">
+                                            Name
+                                            <svg class="ml-1 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4"></path>
+                                            </svg>
+                                        </div>
+                                    </th>
+                                    <th scope="col" data-sort="size" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 cursor-pointer hover:bg-gray-100">
+                                        <div class="flex items-center">
+                                            Size
+                                            <svg class="ml-1 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4"></path>
+                                            </svg>
+                                        </div>
+                                    </th>
+                                    <th scope="col" data-sort="type" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 cursor-pointer hover:bg-gray-100">
+                                        <div class="flex items-center">
+                                            Type
+                                            <svg class="ml-1 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4"></path>
+                                            </svg>
+                                        </div>
+                                    </th>
+                                    <th scope="col" data-sort="modified" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 cursor-pointer hover:bg-gray-100">
+                                        <div class="flex items-center">
+                                            Modified
+                                            <svg class="ml-1 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4"></path>
+                                            </svg>
+                                        </div>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody id="file-list-body" class="divide-y divide-gray-200 bg-white">
+                                <!-- File rows will be dynamically added here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Command Tab -->
+            <div id="tab-command" class="tab-content hidden">
+                <div class="flex items-center justify-center h-96">
+                    <div class="text-center">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                        <h3 class="mt-2 text-sm font-medium text-gray-900">Command Interface</h3>
+                        <p class="mt-1 text-sm text-gray-500">Coming Soon</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Console Tab -->
+            <div id="tab-console" class="tab-content hidden">
+                <div class="flex items-center justify-center h-96">
+                    <div class="text-center">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                        </svg>
+                        <h3 class="mt-2 text-sm font-medium text-gray-900">Console Output</h3>
+                        <p class="mt-1 text-sm text-gray-500">Coming Soon</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Monitoring Tab -->
+            <div id="tab-monitoring" class="tab-content hidden">
+                <div class="flex items-center justify-center h-96">
+                    <div class="text-center">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                        </svg>
+                        <h3 class="mt-2 text-sm font-medium text-gray-900">System Monitoring</h3>
+                        <p class="mt-1 text-sm text-gray-500">Coming Soon</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- Context Menu -->
+    <div id="context-menu" class="hidden absolute z-50 mt-2 w-80 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+        <a href="#" data-action="open" class="menu-item flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+            <svg class="mr-3 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+            </svg>
+            Open
+        </a>
+        <a href="#" data-action="edit-modal" class="menu-item flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" style="display:none">
+            <svg class="mr-3 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+            </svg>
+            Edit (Modal)
+        </a>
+        <a href="#" data-action="edit-window" class="menu-item flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" style="display:none">
+            <svg class="mr-3 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+            </svg>
+            Edit (New Window)
+        </a>
+        <a href="#" data-action="edit-image-modal" class="menu-item flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" style="display:none">
+            <svg class="mr-3 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+            </svg>
+            Edit Image (Modal)
+        </a>
+        <a href="#" data-action="edit-image-window" class="menu-item flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" style="display:none">
+            <svg class="mr-3 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+            </svg>
+            Edit Image (New Window)
+        </a>
+        <a href="#" data-action="view-log-modal" class="menu-item flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" style="display:none">
+            <svg class="mr-3 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l4.414 4.414A1 1 0 0118 8.414V19a2 2 0 01-2 2z"></path>
+            </svg>
+            View Log (Modal)
+        </a>
+        <a href="#" data-action="view-log-window" class="menu-item flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" style="display:none">
+            <svg class="mr-3 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l4.414 4.414A1 1 0 0118 8.414V19a2 2 0 01-2 2z"></path>
+            </svg>
+            View Log (New Window)
+        </a>
+        <div class="border-t border-gray-100"></div>
+        <a href="#" data-action="download" class="menu-item flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+            <svg class="mr-3 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path>
+            </svg>
+            Download
+        </a>
+        <div class="border-t border-gray-100"></div>
+        <a href="#" data-action="cut" class="menu-item flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+            <svg class="mr-3 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243 4.243 3 3 0 004.243-4.243zm0-5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z"></path>
+            </svg>
+            Cut
+        </a>
+        <a href="#" data-action="copy" class="menu-item flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+            <svg class="mr-3 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
+            </svg>
+            Copy
+        </a>
+        <a href="#" data-action="paste" class="menu-item flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+            <svg class="mr-3 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+            </svg>
+            Paste
+        </a>
+        <div class="border-t border-gray-100"></div>
+        <a href="#" data-action="rename" class="menu-item flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+            <svg class="mr-3 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
+            </svg>
+            Rename
+        </a>
+        <a href="#" data-action="delete" class="menu-item flex items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50 hover:text-red-700">
+            <svg class="mr-3 h-5 w-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+            </svg>
+            Delete
+        </a>
+        <div class="border-t border-gray-100"></div>
+        <a href="#" data-action="properties" class="menu-item flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+            <svg class="mr-3 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            Properties
+        </a>
+        <a href="#" data-action="exif" class="menu-item flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" style="display:none">
+            <svg class="mr-3 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h2l1 5h13l1.5-4.5a1 1 0 00-.94-1.32H7"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 18a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 18a2 2 0 11-4 0 2 2 0 014 0z"></path>
+            </svg>
+            EXIF data
+        </a>
+    </div>
+    
+    <!-- Upload Modal -->
+    <div id="upload-modal" class="hidden fixed z-50 inset-0 overflow-y-auto">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+            <div class="relative inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+                <div>
+                    <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-indigo-100">
+                        <svg class="h-6 w-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                        </svg>
+                    </div>
+                    <div class="mt-3 text-center sm:mt-5">
+                        <h3 class="text-lg leading-6 font-medium text-gray-900">Upload Files</h3>
+                        <div class="mt-2">
+                            <div id="drop-zone" class="max-w-lg flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:border-indigo-500 transition-colors">
+                                <div class="space-y-1 text-center">
+                                    <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                                        <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
+                                    <div class="flex text-sm text-gray-600">
+                                        <label for="file-input" class="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500">
+                                            <span>Upload files</span>
+                                            <input id="file-input" name="file-input" type="file" class="sr-only" multiple>
+                                        </label>
+                                        <p class="pl-1">or drag and drop</p>
+                                    </div>
+                                    <p class="text-xs text-gray-500">Any file type up to quota limit</p>
+                                </div>
+                            </div>
+                            <div id="upload-list" class="mt-4 hidden">
+                                <!-- Upload progress items will be added here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
+                    <button type="button" id="upload-btn" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:col-start-2 sm:text-sm">
+                        Upload
+                    </button>
+                    <button type="button" class="close mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:col-start-1 sm:text-sm">
+                        Cancel
+                    </button>
                 </div>
             </div>
         </div>
-
-        <!-- Loading Overlay -->
-        <div id="loading" class="hidden">
-            <div class="spinner"></div>
-        </div>
-        
-        <!-- Editor Modal -->
-        <div id="editor-modal" class="modal hidden">
-            <div class="editor-modal-content">
-                <div class="editor-modal-header">
-                    <span id="editor-modal-filename"></span>
-                    <button class="editor-modal-close">&times;</button>
+    </div>
+    
+    <!-- Properties Modal -->
+    <div id="properties-modal" class="hidden fixed z-50 inset-0 overflow-y-auto">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+            <div class="relative inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+                <div>
+                    <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-gray-100">
+                        <svg class="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                    <div class="mt-3 text-center sm:mt-5">
+                        <h3 class="text-lg leading-6 font-medium text-gray-900">File Properties</h3>
+                        <div class="mt-2">
+                            <div id="properties-content" class="text-left text-sm text-gray-500">
+                                <!-- Properties will be dynamically added here -->
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <iframe id="editor-modal-iframe" src=""></iframe>
+                <div class="mt-5 sm:mt-6">
+                    <button type="button" class="close inline-flex justify-center w-full rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:text-sm">
+                        Close
+                    </button>
+                </div>
             </div>
         </div>
-        
-        <!-- Image Editor Modal -->
-        <div id="image-editor-modal" class="modal hidden">
-            <div class="editor-modal-content">
-                <div class="editor-modal-header">
-                    <span id="image-editor-modal-filename"></span>
-                    <button class="image-editor-modal-close">&times;</button>
+    </div>
+    
+    <!-- Text Editor Modal -->
+    <div id="editor-modal" class="hidden fixed z-50 inset-0 overflow-y-auto">
+        <div class="flex items-center justify-center min-h-screen">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+            <div class="relative bg-white rounded-lg overflow-hidden shadow-xl transform transition-all" style="width: 95%; height: 95vh; max-width: 1600px;">
+                <div class="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
+                    <h3 id="editor-modal-filename" class="text-lg font-medium text-gray-900">Untitled</h3>
+                    <button class="editor-modal-close p-1 rounded-md hover:bg-gray-200 transition-colors">
+                        <svg class="h-5 w-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
                 </div>
-                <iframe id="image-editor-modal-iframe" src=""></iframe>
+                <iframe id="editor-modal-iframe" class="w-full" style="height: calc(100% - 52px);"></iframe>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Image Editor Modal -->
+    <div id="image-editor-modal" class="hidden fixed z-50 inset-0 overflow-y-auto">
+        <div class="flex items-center justify-center min-h-screen">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+            <div class="relative bg-white rounded-lg overflow-hidden shadow-xl transform transition-all" style="width: 98%; height: 98vh; max-width: 1800px;">
+                <div class="absolute left-4 top-4 z-10 bg-white/90 rounded px-3 py-1 shadow-sm">
+                    <span id="image-editor-modal-filename" class="text-sm font-medium text-gray-700">Image</span>
+                </div>
+                <div class="absolute top-2 right-2 z-10">
+                    <button class="image-editor-modal-close bg-white rounded-full p-2 shadow-lg hover:bg-gray-100">
+                        <svg class="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <iframe id="image-editor-modal-iframe" class="w-full h-full"></iframe>
+            </div>
+        </div>
+    </div>
+    
+    <!-- New Folder Modal -->
+    <div id="new-folder-modal" class="hidden fixed z-50 inset-0 overflow-y-auto">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+            <div class="relative inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+                <div>
+                    <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-indigo-100">
+                        <svg class="h-6 w-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+                        </svg>
+                    </div>
+                    <div class="mt-3 text-center sm:mt-5">
+                        <h3 class="text-lg leading-6 font-medium text-gray-900">New Folder</h3>
+                        <div class="mt-2">
+                            <p class="text-sm text-gray-500">Enter a name for the new folder.</p>
+                            <div class="mt-4">
+                                <input type="text" id="new-folder-name" class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md px-3 py-2" placeholder="New Folder" value="New Folder">
+                                <p id="new-folder-error" class="mt-2 text-sm text-red-600 hidden"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
+                    <button type="button" id="create-folder-btn" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:col-start-2 sm:text-sm">
+                        Create
+                    </button>
+                    <button type="button" id="cancel-folder-btn" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:col-start-1 sm:text-sm">
+                        Cancel
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
-    <script src="/js/utils.js"></script>
+    <div id="rename-modal" class="hidden fixed z-50 inset-0 overflow-y-auto">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+            <div class="relative inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+                <div>
+                    <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-indigo-100">
+                        <svg class="h-6 w-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5h2m-1 14v-6m0 0a2 2 0 100-4 2 2 0 000 4z"></path>
+                        </svg>
+                    </div>
+                    <div class="mt-3 text-center sm:mt-5">
+                        <h3 class="text-lg leading-6 font-medium text-gray-900">Rename Item</h3>
+                        <div class="mt-2">
+                            <p class="text-sm text-gray-500">Enter a new name for the selected item.</p>
+                            <div class="mt-4">
+                                <input type="text" id="rename-name" class="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md px-3 py-2" placeholder="New name">
+                                <p id="rename-error" class="mt-2 text-sm text-red-600 hidden"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
+                    <button type="button" id="rename-confirm-btn" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:col-start-2 sm:text-sm">
+                        Rename
+                    </button>
+                    <button type="button" id="rename-cancel-btn" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:col-start-1 sm:text-sm">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Alert Modal -->
+    <div id="error-modal" class="hidden fixed z-50 inset-0 overflow-y-auto">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+            <div class="relative inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+                <div>
+                    <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                        <svg class="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                        </svg>
+                    </div>
+                    <div class="mt-3 text-center sm:mt-5">
+                        <h3 class="text-lg leading-6 font-medium text-gray-900">Error</h3>
+                        <div class="mt-2">
+                            <p id="error-message" class="text-sm text-gray-500"></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-5 sm:mt-6">
+                    <button type="button" id="error-ok-btn" class="inline-flex justify-center w-full rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:text-sm">
+                        OK
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="delete-modal" class="hidden fixed z-50 inset-0 overflow-y-auto">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+            <div class="relative inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+                <div>
+                    <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                        <svg class="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m2 8H7a2 2 0 01-2-2V7l2-3h10l2 3v12a2 2 0 01-2 2z"></path>
+                        </svg>
+                    </div>
+                    <div class="mt-3 text-center sm:mt-5">
+                        <h3 class="text-lg leading-6 font-medium text-gray-900">Confirm deletion</h3>
+                        <div class="mt-2 space-y-3">
+                            <p id="delete-modal-description" class="text-sm text-gray-600"></p>
+                            <ul id="delete-modal-list" class="text-left text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-md divide-y divide-gray-200 hidden"></ul>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
+                    <button type="button" id="delete-confirm-btn" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:col-start-2 sm:text-sm">
+                        Delete
+                    </button>
+                    <button type="button" id="delete-cancel-btn" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:col-start-1 sm:text-sm">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- EXIF Modal -->
+    <div id="exif-modal" class="hidden fixed z-50 inset-0 overflow-y-auto">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+            <div class="relative inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6">
+                <div>
+                    <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-indigo-100">
+                        <svg class="h-6 w-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h2l1 5h13l1.5-4.5a1 1 0 00-.94-1.32H7"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 18a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 18a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                        </svg>
+                    </div>
+                    <div class="mt-3 text-center sm:mt-5">
+                        <h3 id="exif-modal-title" class="text-lg leading-6 font-medium text-gray-900">EXIF data</h3>
+                        <div id="exif-content" class="mt-4 text-left text-sm text-gray-500"></div>
+                    </div>
+                </div>
+                <div class="mt-5 sm:mt-6">
+                    <button type="button" class="close inline-flex justify-center w-full rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:text-sm">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Tab switching script -->
+    <script>
+        // Tab switching functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const tabLinks = document.querySelectorAll('.tab-link');
+            const tabContents = document.querySelectorAll('.tab-content');
+            
+            tabLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const targetTab = this.dataset.tab;
+                    
+                    // Update active tab styling
+                    tabLinks.forEach(l => {
+                        l.classList.remove('border-indigo-500', 'text-gray-900');
+                        l.classList.add('border-transparent', 'text-gray-500');
+                    });
+                    this.classList.remove('border-transparent', 'text-gray-500');
+                    this.classList.add('border-indigo-500', 'text-gray-900');
+                    
+                    // Show/hide tab content
+                    tabContents.forEach(content => {
+                        if (content.id === `tab-${targetTab}`) {
+                            content.classList.remove('hidden');
+                        } else {
+                            content.classList.add('hidden');
+                        }
+                    });
+                });
+            });
+        });
+    </script>
+    
+    <!-- Load application scripts -->
     <script src="/js/api.js"></script>
+    <script src="/js/utils.js"></script>
     <script src="/js/fileicons.js"></script>
     <script src="/js/clipboard.js"></script>
     <script src="/js/ui.js"></script>

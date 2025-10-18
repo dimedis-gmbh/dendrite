@@ -74,10 +74,8 @@ test.describe('Dendrite Text Editor', () => {
             return '';
         }, iframeElement);
 
-        // Verify the content matches what test-setup.js creates
-        expect(editorContent).toContain('This is a sample text file');
-        expect(editorContent).toContain('It has multiple lines');
-        expect(editorContent).toContain('For testing the editor');
+        // Verify the content matches the current file on disk
+        expect(editorContent.trim()).toBe(originalContent.trim());
     });
 
     test('should edit and save file content', async ({page}) => {
@@ -134,10 +132,12 @@ test.describe('Dendrite Text Editor', () => {
             await fileRow.click({button: 'right'});
             await expect(page.locator('#context-menu')).toBeVisible();
 
-            // Check that edit options are disabled
+            // Check that edit options are hidden and disabled
             const editModal = page.locator('[data-action="edit-modal"]');
             const editWindow = page.locator('[data-action="edit-window"]');
 
+            await expect(editModal).toBeHidden();
+            await expect(editWindow).toBeHidden();
             await expect(editModal).toHaveClass(/disabled/);
             await expect(editWindow).toHaveClass(/disabled/);
         }
@@ -214,7 +214,7 @@ test.describe('Dendrite Text Editor', () => {
         await iframe.locator('#editor-container').waitFor();
 
         // Focus back on the main page (outside iframe) to trigger escape handler
-        await page.click('.editor-modal-header');
+        await page.locator('.editor-modal-close').focus();
 
         // Press Escape
         await page.keyboard.press('Escape');

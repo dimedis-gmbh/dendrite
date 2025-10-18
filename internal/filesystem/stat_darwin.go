@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// jscpd:ignore-start
 // getSysStatInfo extracts platform-specific stat information
 func getSysStatInfo(info os.FileInfo, stat *FileStatInfo) {
 	if sysstat, ok := info.Sys().(*syscall.Stat_t); ok {
@@ -18,3 +19,5 @@ func getSysStatInfo(info os.FileInfo, stat *FileStatInfo) {
 		stat.ChangeTime = time.Unix(sysstat.Ctimespec.Sec, sysstat.Ctimespec.Nsec)
 	}
 }
+
+// jscpd:ignore-end

@@ -103,7 +103,7 @@ test.describe('Dendrite Image Editor', () => {
         await expect(page.locator('#image-editor-modal')).toBeHidden();
     });
     
-    test('should open image editor in new window on double-click', async ({page, context}) => {
+    test('should open image viewer in new window on double-click', async ({page, context}) => {
         // Wait a moment for file to be visible (Firefox may need more time)
         await page.waitForTimeout(500);
         
@@ -128,24 +128,13 @@ test.describe('Dendrite Image Editor', () => {
         await editorPage.waitForLoadState();
         
         // Check the URL of the new window
-        const editorUrl = editorPage.url();
-        expect(editorUrl).toContain('image-editor.html');
-        expect(editorUrl).toContain('test-image.png');
-        expect(editorUrl).not.toContain('modal=true');
+        await editorPage.waitForSelector('#viewer-content', { timeout: 10000 });
+        await editorPage.waitForSelector('img.viewer-media', { timeout: 10000 });
         
-        // Wait for the title to be updated by JavaScript
-        // The initial title is "Dendrite Image Editor" and JS updates it to include filename
-        await editorPage.waitForFunction(
-            () => document.title.includes('test-image.png'),
-            { timeout: 5000 }
-        );
-        
-        // Now check that the page title contains the filename
         const title = await editorPage.title();
         expect(title).toContain('test-image.png');
-        expect(title).toContain('Dendrite Image Editor');
+        expect(title).toContain('Viewer');
         
-        // Close the editor window
         await editorPage.close();
     });
     

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -68,6 +69,7 @@ func (s *Server) setupRoutes() {
 	api.HandleFunc("/files", s.listFiles).Methods("GET")
 	api.HandleFunc("/files", s.uploadFile).Methods("POST")
 	api.HandleFunc("/files/{path:.+}/stat", s.statFile).Methods("GET")
+	api.HandleFunc("/files/{path:.+}/exif", s.getFileExif).Methods("GET")
 	api.HandleFunc("/files/{path:.+}/move", s.moveFile).Methods("POST")
 	api.HandleFunc("/files/{path:.+}/copy", s.copyFile).Methods("POST")
 	api.HandleFunc("/files/{path:.+}/raw", s.getFileRaw).Methods("GET")
@@ -90,12 +92,16 @@ func (s *Server) setupRoutes() {
 	s.Router.PathPrefix("/lib/").Handler(fileServer)
 	s.Router.PathPrefix("/img/").Handler(fileServer)
 	s.Router.PathPrefix("/images/").Handler(fileServer)
+	s.Router.PathPrefix("/icons/").Handler(fileServer)
 
 	// Serve editor.html for the editor route
 	s.Router.Path("/editor.html").HandlerFunc(s.serveEditor)
 
 	// Serve image-editor.html for the image editor route
 	s.Router.Path("/image-editor.html").HandlerFunc(s.serveImageEditor)
+
+	// Serve file-viewer.html for the inline viewer route
+	s.Router.Path("/file-viewer.html").HandlerFunc(s.serveFileViewer)
 
 	// Serve log-viewer.html for the log viewer route
 	s.Router.Path("/log-viewer.html").HandlerFunc(s.serveLogViewer)
@@ -212,6 +218,20 @@ func (s *Server) serveImageEditor(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
+func (s *Server) serveFileViewer(w http.ResponseWriter, _ *http.Request) {
+	// Serve file-viewer.html from embedded filesystem
+	viewerContent, err := fs.ReadFile(s.webFS, "file-viewer.html")
+	if err != nil {
+		http.Error(w, "Failed to load file viewer", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if _, err := w.Write(viewerContent); err != nil {
+		http.Error(w, "Failed to write response", http.StatusInternalServerError)
+	}
+}
+
 func (s *Server) serveLogViewer(w http.ResponseWriter, _ *http.Request) {
 	// Serve log-viewer.html from embedded filesystem
 	logViewerContent, err := fs.ReadFile(s.webFS, "log-viewer.html")
@@ -227,38 +247,19 @@ func (s *Server) serveLogViewer(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {
+	fs, ok := s.resolveFilesystem(w, r)
+	if !ok {
+		return
+	}
+
 	path := r.URL.Query().Get("path")
 	if path == "" {
 		path = "/"
 	}
 
-	// Get filesystem manager with JWT restrictions if applicable
-	fs, err := s.getFilesystemForRequest(r)
-	if err != nil {
-		// More specific error handling
-		if strings.Contains(err.Error(), "no valid JWT claims") {
-			http.Error(w, "Authentication required", http.StatusUnauthorized)
-		} else if strings.Contains(err.Error(), "not found") {
-			http.Error(w, err.Error(), http.StatusNotFound)
-		} else if strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field") {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		} else {
-			http.Error(w, err.Error(), http.StatusForbidden)
-		}
-		return
-	}
-
-	// Check if filesystem manager is nil
-	if fs == nil {
-		http.Error(w, "Filesystem manager not initialized", http.StatusInternalServerError)
-		return
-	}
-
 	files, err := fs.ListFiles(path)
 	if err != nil {
-		// Check if it's a "not found" error
-		if strings.Contains(err.Error(), "not found") {
-			http.Error(w, err.Error(), http.StatusNotFound)
+		if handleNotFound(w, err) {
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -270,8 +271,7 @@ func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {
 		files = []filesystem.FileInfo{}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(files); err != nil {
+	if err := writeJSON(w, 0, files); err != nil {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 	}
 }
@@ -306,18 +306,8 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	// Get filesystem manager with JWT restrictions if applicable
-	fs, err := s.getFilesystemForRequest(r)
-	if err != nil {
-		// More specific error handling
-		if strings.Contains(err.Error(), "no valid JWT claims") {
-			http.Error(w, "Authentication required", http.StatusUnauthorized)
-		} else if strings.Contains(err.Error(), "not found") {
-			http.Error(w, err.Error(), http.StatusNotFound)
-		} else if strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field") {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		} else {
-			http.Error(w, err.Error(), http.StatusForbidden)
-		}
+	fs, ok := s.resolveFilesystem(w, r)
+	if !ok {
 		return
 	}
 
@@ -327,8 +317,7 @@ func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(result); err != nil {
+	if err := writeJSON(w, 0, result); err != nil {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 	}
 }
@@ -337,19 +326,8 @@ func (s *Server) getFile(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	path := vars["path"]
 
-	// Get filesystem manager with JWT restrictions if applicable
-	fs, err := s.getFilesystemForRequest(r)
-	if err != nil {
-		// More specific error handling
-		if strings.Contains(err.Error(), "no valid JWT claims") {
-			http.Error(w, "Authentication required", http.StatusUnauthorized)
-		} else if strings.Contains(err.Error(), "not found") {
-			http.Error(w, err.Error(), http.StatusNotFound)
-		} else if strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field") {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		} else {
-			http.Error(w, err.Error(), http.StatusForbidden)
-		}
+	fs, ok := s.resolveFilesystem(w, r)
+	if !ok {
 		return
 	}
 
@@ -371,9 +349,26 @@ func (s *Server) getFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set appropriate headers for file download
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filepath.Base(filePath)))
-	w.Header().Set("Content-Type", "application/octet-stream")
+	disposition := "attachment"
+	inlineParam := r.URL.Query().Get("inline")
+	if inlineParam != "" {
+		if inlineParam == "1" || strings.EqualFold(inlineParam, "true") {
+			disposition = "inline"
+		}
+	}
+
+	filename := filepath.Base(filePath)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("%s; filename=\"%s\"", disposition, filename))
+
+	if disposition == "inline" {
+		if mimeType := mime.TypeByExtension(strings.ToLower(filepath.Ext(filePath))); mimeType != "" {
+			w.Header().Set("Content-Type", mimeType)
+		} else {
+			w.Header().Set("Content-Type", "application/octet-stream")
+		}
+	} else {
+		w.Header().Set("Content-Type", "application/octet-stream")
+	}
 
 	http.ServeFile(w, r, filePath)
 }
@@ -383,113 +378,31 @@ func (s *Server) deleteFile(w http.ResponseWriter, r *http.Request) {
 	path := vars["path"]
 
 	// Get filesystem manager with JWT restrictions if applicable
-	fs, err := s.getFilesystemForRequest(r)
-	if err != nil {
-		// More specific error handling
-		if strings.Contains(err.Error(), "no valid JWT claims") {
-			http.Error(w, "Authentication required", http.StatusUnauthorized)
-		} else if strings.Contains(err.Error(), "not found") {
-			http.Error(w, err.Error(), http.StatusNotFound)
-		} else if strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field") {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		} else {
-			http.Error(w, err.Error(), http.StatusForbidden)
-		}
+	fs, ok := s.resolveFilesystem(w, r)
+	if !ok {
 		return
 	}
 
-	err = fs.DeleteFile(path)
-	if err != nil {
+	if err := fs.DeleteFile(path); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(map[string]string{"status": "deleted"}); err != nil {
+	if err := writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"}); err != nil {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 	}
 }
 
 func (s *Server) moveFile(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	sourcePath := vars["path"]
-
-	var req struct {
-		DestPath string `json:"destPath"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	// Get filesystem manager with JWT restrictions if applicable
-	fs, err := s.getFilesystemForRequest(r)
-	if err != nil {
-		// More specific error handling
-		if strings.Contains(err.Error(), "no valid JWT claims") {
-			http.Error(w, "Authentication required", http.StatusUnauthorized)
-		} else if strings.Contains(err.Error(), "not found") {
-			http.Error(w, err.Error(), http.StatusNotFound)
-		} else if strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field") {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		} else {
-			http.Error(w, err.Error(), http.StatusForbidden)
-		}
-		return
-	}
-
-	err = fs.MoveFile(sourcePath, req.DestPath)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(map[string]string{"status": "moved"}); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-	}
+	s.handleFileTransfer(w, r, "moved", func(fs *filesystem.Manager, src, dest string) error {
+		return fs.MoveFile(src, dest)
+	})
 }
 
 func (s *Server) copyFile(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	sourcePath := vars["path"]
-
-	var req struct {
-		DestPath string `json:"destPath"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	// Get filesystem manager with JWT restrictions if applicable
-	fs, err := s.getFilesystemForRequest(r)
-	if err != nil {
-		// More specific error handling
-		if strings.Contains(err.Error(), "no valid JWT claims") {
-			http.Error(w, "Authentication required", http.StatusUnauthorized)
-		} else if strings.Contains(err.Error(), "not found") {
-			http.Error(w, err.Error(), http.StatusNotFound)
-		} else if strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field") {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		} else {
-			http.Error(w, err.Error(), http.StatusForbidden)
-		}
-		return
-	}
-
-	err = fs.CopyFile(sourcePath, req.DestPath)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(map[string]string{"status": "copied"}); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-	}
+	s.handleFileTransfer(w, r, "copied", func(fs *filesystem.Manager, src, dest string) error {
+		return fs.CopyFile(src, dest)
+	})
 }
 
 func (s *Server) statFile(w http.ResponseWriter, r *http.Request) {
@@ -497,18 +410,8 @@ func (s *Server) statFile(w http.ResponseWriter, r *http.Request) {
 	path := vars["path"]
 
 	// Get filesystem manager with JWT restrictions if applicable
-	fs, err := s.getFilesystemForRequest(r)
-	if err != nil {
-		// More specific error handling
-		if strings.Contains(err.Error(), "no valid JWT claims") {
-			http.Error(w, "Authentication required", http.StatusUnauthorized)
-		} else if strings.Contains(err.Error(), "not found") {
-			http.Error(w, err.Error(), http.StatusNotFound)
-		} else if strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field") {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		} else {
-			http.Error(w, err.Error(), http.StatusForbidden)
-		}
+	fs, ok := s.resolveFilesystem(w, r)
+	if !ok {
 		return
 	}
 
@@ -518,8 +421,34 @@ func (s *Server) statFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(stat); err != nil {
+	if err := writeJSON(w, 0, stat); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) getFileExif(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	path := vars["path"]
+
+	fs, ok := s.resolveFilesystem(w, r)
+	if !ok {
+		return
+	}
+
+	data, err := fs.GetExifData(path)
+	if err != nil {
+		if handleNotFound(w, err) {
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if data == nil {
+		data = &filesystem.ExifData{Tags: map[string]string{}}
+	}
+
+	if err := writeJSON(w, 0, data); err != nil {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 	}
 }
@@ -550,23 +479,12 @@ func (s *Server) downloadZip(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", zipName))
 
 	// Get filesystem manager with JWT restrictions if applicable
-	fs, err := s.getFilesystemForRequest(r)
-	if err != nil {
-		// More specific error handling
-		if strings.Contains(err.Error(), "no valid JWT claims") {
-			http.Error(w, "Authentication required", http.StatusUnauthorized)
-		} else if strings.Contains(err.Error(), "not found") {
-			http.Error(w, err.Error(), http.StatusNotFound)
-		} else if strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field") {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		} else {
-			http.Error(w, err.Error(), http.StatusForbidden)
-		}
+	fs, ok := s.resolveFilesystem(w, r)
+	if !ok {
 		return
 	}
 
-	err = fs.CreateZip(w, req.Paths)
-	if err != nil {
+	if err := fs.CreateZip(w, req.Paths); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -574,18 +492,8 @@ func (s *Server) downloadZip(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getQuotaInfo(w http.ResponseWriter, r *http.Request) {
 	// Get filesystem manager with JWT restrictions if applicable
-	fs, err := s.getFilesystemForRequest(r)
-	if err != nil {
-		// More specific error handling
-		if strings.Contains(err.Error(), "no valid JWT claims") {
-			http.Error(w, "Authentication required", http.StatusUnauthorized)
-		} else if strings.Contains(err.Error(), "not found") {
-			http.Error(w, err.Error(), http.StatusNotFound)
-		} else if strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field") {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		} else {
-			http.Error(w, err.Error(), http.StatusForbidden)
-		}
+	fs, ok := s.resolveFilesystem(w, r)
+	if !ok {
 		return
 	}
 
@@ -595,8 +503,7 @@ func (s *Server) getQuotaInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(info); err != nil {
+	if err := writeJSON(w, 0, info); err != nil {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 	}
 }
@@ -617,29 +524,17 @@ func (s *Server) createFolder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get filesystem manager with JWT restrictions if applicable
-	fs, err := s.getFilesystemForRequest(r)
-	if err != nil {
-		// More specific error handling
-		if strings.Contains(err.Error(), "no valid JWT claims") {
-			http.Error(w, "Authentication required", http.StatusUnauthorized)
-		} else if strings.Contains(err.Error(), "not found") {
-			http.Error(w, err.Error(), http.StatusNotFound)
-		} else if strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field") {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		} else {
-			http.Error(w, err.Error(), http.StatusForbidden)
-		}
+	fs, ok := s.resolveFilesystem(w, r)
+	if !ok {
 		return
 	}
 
-	err = fs.CreateFolder(req.Path)
-	if err != nil {
+	if err := fs.CreateFolder(req.Path); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(map[string]string{"status": "created", "path": req.Path}); err != nil {
+	if err := writeJSON(w, http.StatusOK, map[string]string{"status": "created", "path": req.Path}); err != nil {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 	}
 }
@@ -648,9 +543,8 @@ func (s *Server) getFileRaw(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	filePath := vars["path"]
 
-	fs, err := s.getFilesystemForRequest(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusForbidden)
+	fs, ok := s.resolveFilesystem(w, r)
+	if !ok {
 		return
 	}
 
@@ -684,9 +578,8 @@ func (s *Server) putFileRaw(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	filePath := vars["path"]
 
-	fs, err := s.getFilesystemForRequest(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusForbidden)
+	fs, ok := s.resolveFilesystem(w, r)
+	if !ok {
 		return
 	}
 
@@ -702,8 +595,7 @@ func (s *Server) putFileRaw(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Write file
-	err = fs.WriteFile(filePath, content)
-	if err != nil {
+	if err := fs.WriteFile(filePath, content); err != nil {
 		if strings.Contains(err.Error(), "quota exceeded") {
 			http.Error(w, "Quota exceeded", http.StatusInsufficientStorage)
 		} else {
@@ -712,10 +604,77 @@ func (s *Server) putFileRaw(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(map[string]string{
+	if err := writeJSON(w, 0, map[string]string{
 		"message": "File saved successfully",
 	}); err != nil {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 	}
+}
+
+func (s *Server) handleFileTransfer(w http.ResponseWriter, r *http.Request, status string, op func(*filesystem.Manager, string, string) error) {
+	vars := mux.Vars(r)
+	sourcePath := vars["path"]
+
+	var req struct {
+		DestPath string `json:"destPath"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	fs, ok := s.resolveFilesystem(w, r)
+	if !ok {
+		return
+	}
+
+	if err := op(fs, sourcePath, req.DestPath); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := writeJSON(w, http.StatusOK, map[string]string{"status": status}); err != nil {
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) resolveFilesystem(w http.ResponseWriter, r *http.Request) (*filesystem.Manager, bool) {
+	fs, err := s.getFilesystemForRequest(r)
+	if err != nil {
+		switch {
+		case strings.Contains(err.Error(), "no valid JWT claims"):
+			http.Error(w, "Authentication required", http.StatusUnauthorized)
+		case strings.Contains(err.Error(), "not found"):
+			http.Error(w, err.Error(), http.StatusNotFound)
+		case strings.Contains(err.Error(), "empty") && strings.Contains(err.Error(), "field"):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		default:
+			http.Error(w, err.Error(), http.StatusForbidden)
+		}
+		return nil, false
+	}
+
+	if fs == nil {
+		http.Error(w, "Filesystem manager not initialized", http.StatusInternalServerError)
+		return nil, false
+	}
+
+	return fs, true
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload interface{}) error {
+	w.Header().Set("Content-Type", "application/json")
+	if status != 0 {
+		w.WriteHeader(status)
+	}
+	return json.NewEncoder(w).Encode(payload)
+}
+
+func handleNotFound(w http.ResponseWriter, err error) bool {
+	if err != nil && strings.Contains(err.Error(), "not found") {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return true
+	}
+	return false
 }

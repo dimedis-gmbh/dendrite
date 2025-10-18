@@ -111,17 +111,60 @@ function escapeHtml(text) {
 
 // Show loading overlay
 function showLoading() {
-    document.getElementById('loading').classList.remove('hidden');
+    const loading = document.getElementById('loading');
+    if (loading) {
+        loading.classList.remove('hidden');
+    }
 }
 
 // Hide loading overlay
 function hideLoading() {
-    document.getElementById('loading').classList.add('hidden');
+    const loading = document.getElementById('loading');
+    if (loading) {
+        loading.classList.add('hidden');
+    }
 }
 
 // Show error message
 function showError(message) {
-    alert('Error: ' + message); // Simple error display for now
+    const modal = document.getElementById('error-modal');
+    const messageEl = document.getElementById('error-message');
+    const okBtn = document.getElementById('error-ok-btn');
+    
+    if (modal && messageEl && okBtn) {
+        // Use the modal if available
+        messageEl.textContent = message;
+        modal.classList.remove('hidden');
+        
+        // Handle OK button click
+        const handleOk = () => {
+            modal.classList.add('hidden');
+            cleanup();
+        };
+        
+        // Handle Escape key
+        const handleEscape = (e) => {
+            if (e.key === 'Escape') {
+                handleOk();
+            }
+        };
+        
+        // Cleanup function
+        const cleanup = () => {
+            okBtn.removeEventListener('click', handleOk);
+            document.removeEventListener('keydown', handleEscape);
+        };
+        
+        // Attach event listeners
+        okBtn.addEventListener('click', handleOk);
+        document.addEventListener('keydown', handleEscape);
+        
+        // Focus the OK button
+        setTimeout(() => okBtn.focus(), 100);
+    } else {
+        // Fallback to alert if modal not available
+        alert('Error: ' + message);
+    }
 }
 
 // Show success message

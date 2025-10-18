@@ -1,5 +1,37 @@
 const { test, expect } = require('@playwright/test');
 
+const CONTEXT_MENU_TIMEOUT = process.env.CI ? 10000 : 5000;
+const MODAL_TIMEOUT = process.env.CI ? 10000 : 5000;
+const TOAST_TIMEOUT = process.env.CI ? 15000 : 5000;
+
+async function openRenameModal(page, targetRow) {
+  await targetRow.click({ button: 'right' });
+  await page.waitForSelector('#context-menu:not(.hidden)', { timeout: CONTEXT_MENU_TIMEOUT });
+  const renameItem = page.locator('[data-action="rename"]');
+  await renameItem.click({ timeout: CONTEXT_MENU_TIMEOUT });
+  const modal = page.locator('#rename-modal');
+  await expect(modal).toBeVisible({ timeout: MODAL_TIMEOUT });
+  await expect(page.locator('#context-menu')).toHaveClass(/hidden/, { timeout: CONTEXT_MENU_TIMEOUT });
+  return {
+    modal,
+    input: page.locator('#rename-name'),
+    confirmButton: page.locator('#rename-confirm-btn'),
+    cancelButton: page.locator('#rename-cancel-btn'),
+    errorText: page.locator('#rename-error')
+  };
+}
+
+async function waitForSuccessToast(page, text = 'Successfully renamed') {
+  await page.waitForFunction(
+    expected => {
+      const toast = document.querySelector('.toast.success');
+      return toast && toast.textContent && toast.textContent.includes(expected);
+    },
+    text,
+    { timeout: TOAST_TIMEOUT }
+  );
+}
+
 test.describe('Rename Functionality', () => {
   test.beforeEach(async ({ page, browserName }) => {
     // Set up console logging for debugging
@@ -56,32 +88,14 @@ test.describe('Rename Functionality', () => {
     
     // Find a file
     const fileRow = await page.locator('.file-row[data-is-dir="false"]').first();
-    const originalName = await fileRow.getAttribute('data-path');
+    const originalPath = await fileRow.getAttribute('data-path');
+    const expectedName = originalPath.split('/').pop();
     
-    // Right-click on the file
-    await fileRow.click({ button: 'right' });
+    const { modal, input, cancelButton } = await openRenameModal(page, fileRow);
+    await expect(input).toHaveValue(expectedName, { timeout: MODAL_TIMEOUT });
     
-    // Wait for context menu with extended timeout
-    await page.waitForSelector('#context-menu:not(.hidden)', { timeout: process.env.CI ? 10000 : 5000 });
-    
-    // Set up dialog handler before clicking rename
-    let dialogHandled = false;
-    page.once('dialog', async dialog => {
-      dialogHandled = true;
-      expect(dialog.type()).toBe('prompt');
-      expect(dialog.message()).toBe('Enter new name:');
-      expect(dialog.defaultValue()).toBeTruthy(); // Should have current filename
-      await dialog.dismiss(); // Cancel for this test
-    });
-    
-    // Click rename with increased timeout for CI
-    await page.locator('[data-action="rename"]').click({ timeout: process.env.CI ? 10000 : 5000 });
-    
-    // Wait for dialog to appear and be handled
-    await page.waitForTimeout(process.env.CI ? 2000 : 500);
-    
-    // Context menu should be hidden
-    await expect(page.locator('#context-menu')).toHaveClass(/hidden/, { timeout: process.env.CI ? 10000 : 5000 });
+    await cancelButton.click();
+    await expect(modal).toBeHidden({ timeout: MODAL_TIMEOUT });
   });
 
   test('should rename file successfully', async ({ page }) => {
@@ -90,81 +104,38 @@ test.describe('Rename Functionality', () => {
     
     // Find a file
     const fileRow = await page.locator('.file-row[data-is-dir="false"]').first();
-    
-    // Right-click on the file
-    await fileRow.click({ button: 'right' });
-    
-    // Wait for context menu
-    await page.waitForSelector('#context-menu:not(.hidden)');
-    
-    // Set up dialog handler to accept with new name
     const newName = `renamed_${Date.now()}.txt`;
-    page.once('dialog', async dialog => {
-      await dialog.accept(newName);
-    });
-    
-    // Click rename
-    await page.locator('[data-action="rename"]').click();
-    
-    // Wait for the toast success message or file list refresh
-    await page.waitForFunction(() => {
-      const toast = document.querySelector('.toast.success');
-      return toast && toast.textContent.includes('Successfully renamed');
-    }, { timeout: process.env.CI ? 15000 : 5000 });
-    
-    // Wait for file list to refresh - longer in CI
-    await page.waitForTimeout(process.env.CI ? 2000 : 500);
-    
-    // Check that the file with new name exists
-    await page.waitForSelector(`[data-path*="${newName}"]`);
+
+    const { modal, input, confirmButton } = await openRenameModal(page, fileRow);
+    await input.fill(newName);
+    await confirmButton.click();
+    await waitForSuccessToast(page);
+    await expect(modal).toBeHidden({ timeout: MODAL_TIMEOUT });
+
+    await page.waitForSelector(`[data-path*="${newName}"]`, { timeout: process.env.CI ? 10000 : 5000 });
   });
 
   test('should show error when renaming to existing name', async ({ page }) => {
-    // Wait for files to load
     await page.waitForSelector('.file-row');
-    
-    // Get names of first two files
+
     const files = await page.locator('.file-row[data-is-dir="false"]').all();
     if (files.length < 2) {
       test.skip('Not enough files for this test');
       return;
     }
-    
-    const firstFileName = await files[0].locator('.col-name').textContent();
-    const secondFileName = await files[1].locator('.col-name').textContent();
-    
-    // Right-click on the first file
-    await files[0].click({ button: 'right' });
-    
-    // Wait for context menu
-    await page.waitForSelector('#context-menu:not(.hidden)');
-    
-    // Set up dialog handlers - first for prompt, then for error
-    let dialogCount = 0;
-    page.on('dialog', async dialog => {
-      dialogCount++;
-      if (dialogCount === 1 && dialog.type() === 'prompt') {
-        // First dialog - accept with duplicate name
-        await dialog.accept(secondFileName.trim());
-      } else if (dialogCount === 2 && dialog.type() === 'alert') {
-        // Second dialog - error message
-        expect(dialog.message()).toContain('already exists');
-        await dialog.dismiss();
-      }
-    });
-    
-    // Click rename
-    await page.locator('[data-action="rename"]').click();
-    
-    // Wait for both dialogs to be handled - longer wait for CI
-    await page.waitForTimeout(process.env.CI ? 3000 : 1500);
-    
-    // In CI, the dialogs may take longer to appear
-    if (process.env.CI && dialogCount < 2) {
-      await page.waitForTimeout(2000);
-    }
-    
-    expect(dialogCount).toBe(2);
+
+    const duplicateName = (await files[1].locator('.col-name').textContent()).trim();
+
+    const { modal, input, confirmButton } = await openRenameModal(page, files[0]);
+    await input.fill(duplicateName);
+    await confirmButton.click();
+
+    const errorModal = page.locator('#error-modal');
+    await expect(errorModal).toBeVisible({ timeout: MODAL_TIMEOUT });
+    await expect(errorModal.locator('#error-message')).toContainText('already exists');
+    await errorModal.locator('#error-ok-btn').click();
+    await expect(errorModal).toBeHidden({ timeout: MODAL_TIMEOUT });
+    await expect(modal).toBeHidden({ timeout: MODAL_TIMEOUT });
   });
 
   test('should disable rename for multiple selections', async ({ page }) => {
@@ -196,39 +167,16 @@ test.describe('Rename Functionality', () => {
     
     // Find a file
     const fileRow = await page.locator('.file-row[data-is-dir="false"]').first();
-    
-    // Right-click on the file
-    await fileRow.click({ button: 'right' });
-    
-    // Wait for context menu
-    await page.waitForSelector('#context-menu:not(.hidden)');
-    
-    // Set up dialog handlers for both prompt and error
-    let dialogCount = 0;
-    page.on('dialog', async dialog => {
-      dialogCount++;
-      if (dialogCount === 1 && dialog.type() === 'prompt') {
-        // Accept with invalid name
-        await dialog.accept('invalid/name.txt');
-      } else if (dialogCount === 2 && dialog.type() === 'alert') {
-        // Error dialog
-        expect(dialog.message()).toContain('cannot contain / or \\');
-        await dialog.dismiss();
-      }
-    });
-    
-    // Click rename
-    await page.locator('[data-action="rename"]').click();
-    
-    // Wait for both dialogs - longer wait for CI
-    await page.waitForTimeout(process.env.CI ? 3000 : 1500);
-    
-    // In CI, the dialogs may take longer to appear
-    if (process.env.CI && dialogCount < 2) {
-      await page.waitForTimeout(2000);
-    }
-    
-    expect(dialogCount).toBe(2);
+    const { modal, input, confirmButton, errorText, cancelButton } = await openRenameModal(page, fileRow);
+    await input.fill('invalid/name.txt');
+    await confirmButton.click();
+
+    await expect(errorText).toBeVisible({ timeout: MODAL_TIMEOUT });
+    await expect(errorText).toHaveText(/cannot contain \/ or \\/i);
+    await expect(modal).toBeVisible();
+
+    await cancelButton.click();
+    await expect(modal).toBeHidden({ timeout: MODAL_TIMEOUT });
   });
 
   test('should cancel rename when dialog is dismissed', async ({ page }) => {
@@ -239,22 +187,9 @@ test.describe('Rename Functionality', () => {
     const fileRow = await page.locator('.file-row[data-is-dir="false"]').first();
     const originalPath = await fileRow.getAttribute('data-path');
     
-    // Right-click on the file
-    await fileRow.click({ button: 'right' });
-    
-    // Wait for context menu
-    await page.waitForSelector('#context-menu:not(.hidden)');
-    
-    // Set up dialog handler to cancel
-    page.once('dialog', async dialog => {
-      await dialog.dismiss();
-    });
-    
-    // Click rename
-    await page.locator('[data-action="rename"]').click();
-    
-    // Verify no loading or error messages appear (wait briefly)
-    await page.waitForTimeout(process.env.CI ? 1500 : 500);
+    const { modal, cancelButton } = await openRenameModal(page, fileRow);
+    await cancelButton.click();
+    await expect(modal).toBeHidden({ timeout: MODAL_TIMEOUT });
     
     // Verify file still has original name - use first() to avoid multiple matches
     const originalFileRow = page.locator(`[data-path="${originalPath}"]`).first();
@@ -272,35 +207,15 @@ test.describe('Rename Functionality', () => {
       return;
     }
     
-    // Right-click on the folder
-    await folderRow.click({ button: 'right' });
-    
-    // Wait for context menu
-    await page.waitForSelector('#context-menu:not(.hidden)');
-    
-    // Check that rename is enabled
-    const renameItem = page.locator('[data-action="rename"]');
-    await expect(renameItem).not.toHaveClass(/disabled/);
-    
-    // Set up dialog handler
     const newName = `renamed_folder_${Date.now()}`;
-    page.once('dialog', async dialog => {
-      await dialog.accept(newName);
-    });
-    
-    // Click rename
-    await renameItem.click();
-    
-    // Wait for the toast success message
-    await page.waitForFunction(() => {
-      const toast = document.querySelector('.toast.success');
-      return toast && toast.textContent.includes('Successfully renamed');
-    }, { timeout: process.env.CI ? 15000 : 5000 });
-    
-    // Wait for file list to refresh - longer in CI
-    await page.waitForTimeout(process.env.CI ? 2000 : 500);
-    
-    // Check that the folder with new name exists
-    await page.waitForSelector(`[data-path*="${newName}"][data-is-dir="true"]`);
+
+    const { modal, input, confirmButton } = await openRenameModal(page, folderRow);
+    await expect(modal).toBeVisible();
+    await input.fill(newName);
+    await confirmButton.click();
+    await waitForSuccessToast(page);
+    await expect(modal).toBeHidden({ timeout: MODAL_TIMEOUT });
+
+    await page.waitForSelector(`[data-path*="${newName}"][data-is-dir="true"]`, { timeout: process.env.CI ? 10000 : 5000 });
   });
 });

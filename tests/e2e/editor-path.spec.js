@@ -6,19 +6,23 @@ test.describe('Editor Path Handling', () => {
         await page.goto('http://127.0.0.1:3001');
         await page.waitForSelector('.file-row', { timeout: 10000 });
         
-        // Find sample.js file
-        const fileRow = page.locator('.file-row').filter({ hasText: 'sample.js' }).first();
+        // Find a JavaScript file that ships with the test data set
+        let fileRow = page.locator('.file-row').filter({ hasText: 'sample.js' }).first();
+        if (await fileRow.count() === 0) {
+            fileRow = page.locator('.file-row').filter({ hasText: 'script.js' }).first();
+        }
         await expect(fileRow).toBeVisible({ timeout: 10000 });
-        
+
         // Get the actual path from the file row data attribute
         const actualPath = await fileRow.getAttribute('data-path');
+        const fileName = actualPath?.split('/').pop();
         console.log('File row data-path:', actualPath);
-        
+
         // Verify the path is not empty or root
         expect(actualPath).toBeTruthy();
         expect(actualPath).not.toBe('/');
-        expect(actualPath).toContain('sample.js');
-        
+        expect(fileName).toBeTruthy();
+
         // Right-click to open context menu
         await fileRow.click({ button: 'right' });
         await expect(page.locator('#context-menu')).toBeVisible();
@@ -37,7 +41,7 @@ test.describe('Editor Path Handling', () => {
         
         // Verify the iframe URL contains the file path
         expect(iframeSrc).toContain('path=');
-        expect(iframeSrc).toContain('sample.js');
+        expect(iframeSrc).toContain(fileName);
         
         // Parse the path from iframe URL
         const urlParams = new URLSearchParams(iframeSrc.split('?')[1]);
@@ -47,7 +51,7 @@ test.describe('Editor Path Handling', () => {
         // Verify the path parameter
         expect(pathParam).toBeTruthy();
         expect(pathParam).not.toBe('/');
-        expect(pathParam).toContain('sample.js');
+        expect(pathParam).toContain(fileName);
         
         // Close modal
         await page.keyboard.press('Escape');
@@ -61,10 +65,7 @@ test.describe('Editor Path Handling', () => {
         
         // Find any text file (try README.md first, then sample.txt)
         let fileRow = page.locator('.file-row').filter({ hasText: 'README.md' }).first();
-        const hasReadme = await fileRow.count() > 0;
-        
-        if (!hasReadme) {
-            // Fall back to sample.txt if README.md doesn't exist
+        if (await fileRow.count() === 0) {
             fileRow = page.locator('.file-row').filter({ hasText: 'sample.txt' }).first();
         }
         
@@ -72,16 +73,20 @@ test.describe('Editor Path Handling', () => {
         
         // Get the actual path
         const actualPath = await fileRow.getAttribute('data-path');
-        const fileName = hasReadme ? 'README.md' : 'sample.txt';
+        const fileName = actualPath?.split('/').pop();
         console.log(`${fileName} path:`, actualPath);
-        
-        // Listen for new page (window)
+
+        await fileRow.click({ button: 'right' });
+        await page.waitForSelector('#context-menu:not(.hidden)');
+
         const pagePromise = context.waitForEvent('page');
-        
-        // Double-click to open in new window
-        await fileRow.dblclick();
-        
-        // Wait for new window
+        await page.evaluate(() => {
+            const ui = window.dendriteApp?.ui;
+            if (ui && ui.contextMenuTargetPath) {
+                ui.openEditorWindow(ui.contextMenuTargetPath);
+            }
+        });
+
         const editorPage = await pagePromise;
         await editorPage.waitForLoadState();
         

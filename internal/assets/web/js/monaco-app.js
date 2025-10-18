@@ -148,15 +148,7 @@ class MonacoEditorApp {
     
     async loadFile() {
         try {
-            const headers = {};
-            if (this.jwt) {
-                headers['Authorization'] = `Bearer ${this.jwt}`;
-            }
-            
-            // Remove leading slash if present
-            const cleanPath = this.filePath.startsWith('/') ? this.filePath.substring(1) : this.filePath;
-            
-            const response = await fetch(`/api/files/${encodeURIComponent(cleanPath)}/raw`, { headers });
+            const response = await this.fetchRaw();
             if (!response.ok) {
                 throw new Error(`Failed to load file: ${response.statusText}`);
             }
@@ -196,19 +188,10 @@ class MonacoEditorApp {
         }
         
         const content = this.editor.getValue();
-        
+
         try {
-            const headers = { 'Content-Type': 'text/plain' };
-            if (this.jwt) {
-                headers['Authorization'] = `Bearer ${this.jwt}`;
-            }
-            
-            // Remove leading slash if present
-            const cleanPath = this.filePath.startsWith('/') ? this.filePath.substring(1) : this.filePath;
-            
-            const response = await fetch(`/api/files/${encodeURIComponent(cleanPath)}/raw`, {
-                method: 'PUT',
-                headers: headers,
+            const response = await this.fetchRaw('PUT', {
+                headers: { 'Content-Type': 'text/plain' },
                 body: content
             });
             
@@ -225,6 +208,29 @@ class MonacoEditorApp {
         } catch (error) {
             this.showError(`Error saving file: ${error.message}`);
         }
+    }
+
+    getAuthHeaders(baseHeaders = {}) {
+        const headers = { ...baseHeaders };
+        if (this.jwt) {
+            headers['Authorization'] = `Bearer ${this.jwt}`;
+        }
+        return headers;
+    }
+
+    getCleanPath(path) {
+        return path.startsWith('/') ? path.substring(1) : path;
+    }
+
+    async fetchRaw(method = 'GET', options = {}) {
+        const cleanPath = this.getCleanPath(this.filePath);
+        const headers = this.getAuthHeaders(options.headers || {});
+        const requestInit = {
+            method,
+            headers,
+            body: options.body
+        };
+        return fetch(`/api/files/${encodeURIComponent(cleanPath)}/raw`, requestInit);
     }
     
     setupEventHandlers() {

@@ -55,13 +55,7 @@ func JWTMiddleware(secret string) mux.MiddlewareFunc {
 			}
 
 			// Parse and validate token
-			token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-				// Validate signing method
-				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-					return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-				}
-				return []byte(secret), nil
-			})
+			token, err := jwt.ParseWithClaims(tokenString, &Claims{}, signingKeyFunc(secret))
 
 			if err != nil {
 				http.Error(w, "Invalid token", http.StatusUnauthorized)
@@ -103,12 +97,7 @@ func GetClaimsFromContext(ctx context.Context) (*Claims, bool) {
 
 // ValidateJWTString validates a JWT string and returns the claims
 func ValidateJWTString(tokenString string, secret string) (*Claims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		return []byte(secret), nil
-	})
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, signingKeyFunc(secret))
 
 	if err != nil {
 		return nil, err
@@ -131,4 +120,13 @@ func ValidateJWTString(tokenString string, secret string) (*Claims, error) {
 	}
 
 	return claims, nil
+}
+
+func signingKeyFunc(secret string) jwt.Keyfunc {
+	return func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(secret), nil
+	}
 }

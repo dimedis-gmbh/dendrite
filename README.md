@@ -578,13 +578,25 @@ This ensures tests run in the same environment locally as in CI, preventing "wor
 - Embedded frontend assets using `go:embed`
 
 ### Frontend
+
 - Vanilla JavaScript (no framework dependencies)
 - Windows Explorer-like interface
 - Real-time quota display
 - Browser history integration
 - No external CDN dependencies (GDPR compliant)
 
+#### Code Duplication Checks
+
+- Detect copy/paste blocks in the frontend with [jscpd](https://github.com/kucherenko/jscpd):
+
+  ```bash
+  timeout 120 npx jscpd --silent --reporters json internal/assets/web/js
+  ```
+- The command drops a JSON report under `report/jscpd-report.json`. Review the `duplicates` array for file and
+  line ranges that should be refactored.
+
 ## API Endpoints
+
 
 ### File Management
 - `GET /api/files?path=<path>` - List files in directory

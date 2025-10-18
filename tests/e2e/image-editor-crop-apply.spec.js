@@ -60,13 +60,17 @@ test.describe('TUI Image Editor Crop Functionality', () => {
         
         await expect(fileRow).toBeVisible({ timeout: 10000 });
         
-        // Listen for new window
+        await fileRow.click({ button: 'right' });
+        await page.waitForSelector('#context-menu:not(.hidden)');
+
         const pagePromise = context.waitForEvent('page');
-        
-        // Double-click to open in new window
-        await fileRow.dblclick();
-        
-        // Wait for new window
+        await page.evaluate(() => {
+            const ui = window.dendriteApp?.ui;
+            if (ui && ui.contextMenuTargetPath) {
+                ui.openImageEditorWindow(ui.contextMenuTargetPath);
+            }
+        });
+
         const editorPage = await pagePromise;
         await editorPage.waitForLoadState();
         

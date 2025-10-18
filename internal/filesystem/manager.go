@@ -3,10 +3,21 @@ package filesystem
 
 import (
 	"archive/zip"
+	"bytes"
+	"encoding/binary"
 	"fmt"
+	"image"
+	"image/color"
+	// register GIF decoder for metadata extraction
+	_ "image/gif"
+	// register JPEG decoder for metadata extraction
+	_ "image/jpeg"
+	// register PNG decoder for metadata extraction
+	_ "image/png"
 	"io"
 	"io/fs"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,6 +26,9 @@ import (
 
 	"dendrite/internal/config"
 	"dendrite/internal/format"
+
+	"github.com/rwcarlsen/goexif/exif"
+	"github.com/rwcarlsen/goexif/tiff"
 )
 
 // Manager handles filesystem operations
@@ -63,18 +77,37 @@ type QuotaInfo struct {
 
 // FileStatInfo represents detailed file stat information
 type FileStatInfo struct {
-	Name       string    `json:"name"`
-	Path       string    `json:"path"`
-	Size       int64     `json:"size"`
-	IsDir      bool      `json:"isDir"`
-	Mode       string    `json:"mode"`
-	ModTime    time.Time `json:"modTime"`
-	AccessTime time.Time `json:"accessTime"`
-	ChangeTime time.Time `json:"changeTime"`
-	UID        uint32    `json:"uid"`
-	Gid        uint32    `json:"gid"`
-	Nlink      uint64    `json:"nlink"`
-	MimeType   string    `json:"mimeType,omitempty"`
+	Name       string         `json:"name"`
+	Path       string         `json:"path"`
+	Size       int64          `json:"size"`
+	IsDir      bool           `json:"isDir"`
+	Mode       string         `json:"mode"`
+	ModTime    time.Time      `json:"modTime"`
+	AccessTime time.Time      `json:"accessTime"`
+	ChangeTime time.Time      `json:"changeTime"`
+	UID        uint32         `json:"uid"`
+	Gid        uint32         `json:"gid"`
+	Nlink      uint64         `json:"nlink"`
+	MimeType   string         `json:"mimeType,omitempty"`
+	Image      *ImageMetadata `json:"image,omitempty"`
+}
+
+// ImageMetadata captures derived metadata for image files.
+type ImageMetadata struct {
+	Width      int     `json:"width,omitempty"`
+	Height     int     `json:"height,omitempty"`
+	ColorDepth int     `json:"colorDepth,omitempty"`
+	ColorType  string  `json:"colorType,omitempty"`
+	HasAlpha   bool    `json:"hasAlpha,omitempty"`
+	ColorSpace string  `json:"colorSpace,omitempty"`
+	DPIWidth   float64 `json:"dpiWidth,omitempty"`
+	DPIHeight  float64 `json:"dpiHeight,omitempty"`
+	HasExif    bool    `json:"hasExif,omitempty"`
+}
+
+// ExifData contains extracted EXIF tag values.
+type ExifData struct {
+	Tags map[string]string `json:"tags"`
 }
 
 // UploadResult represents the result of a file upload
@@ -487,9 +520,369 @@ func (m *Manager) StatFile(virtualPath string) (*FileStatInfo, error) {
 
 	if !info.IsDir() {
 		stat.MimeType = m.getMimeType(info.Name())
+
+		if meta, err := m.extractImageMetadata(physicalPath, stat.MimeType); err == nil && meta != nil {
+			stat.Image = meta
+		} else if err != nil {
+			log.Printf("Warning: failed to extract image metadata for %s: %v", physicalPath, err)
+		}
 	}
 
 	return stat, nil
+}
+
+func (m *Manager) extractImageMetadata(physicalPath, mimeType string) (*ImageMetadata, error) {
+	if mimeType == "" || !strings.HasPrefix(mimeType, "image/") {
+		return nil, nil
+	}
+
+	// #nosec G304 -- physicalPath is resolved via the virtual filesystem and cannot escape configured roots.
+	file, err := os.Open(physicalPath)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if cerr := file.Close(); cerr != nil {
+			log.Printf("Error closing image file: %v", cerr)
+		}
+	}()
+
+	meta := &ImageMetadata{}
+
+	if _, err := file.Seek(0, io.SeekStart); err == nil {
+		if cfg, _, err := image.DecodeConfig(file); err == nil {
+			meta.Width = cfg.Width
+			meta.Height = cfg.Height
+			colorType, hasAlpha, colorDepth := describeColorModel(cfg.ColorModel)
+			if colorType != "" {
+				meta.ColorType = colorType
+			}
+			meta.HasAlpha = hasAlpha
+			if colorDepth > 0 {
+				meta.ColorDepth = colorDepth
+			}
+		}
+	}
+
+	switch {
+	case strings.Contains(mimeType, "png"):
+		if _, err := file.Seek(0, io.SeekStart); err == nil {
+			if err := parsePNGMetadata(file, meta); err != nil {
+				return meta, err
+			}
+		}
+	case strings.Contains(mimeType, "jpeg") || strings.Contains(mimeType, "jpg") || strings.Contains(mimeType, "jfif"):
+		if err := parseJPEGMetadata(file, meta); err != nil {
+			return meta, err
+		}
+	default:
+		// Best-effort: if we have color depth but no color space, set defaults
+		if meta.ColorSpace == "" {
+			meta.ColorSpace = "Unspecified"
+		}
+	}
+
+	if meta.ColorDepth == 0 {
+		// Assume 8-bit depth when not provided
+		meta.ColorDepth = 8
+	}
+
+	if meta.ColorSpace == "" {
+		meta.ColorSpace = "Unspecified"
+	}
+
+	return meta, nil
+}
+
+func parsePNGMetadata(r io.ReadSeeker, meta *ImageMetadata) error {
+	const ppmToDPI = 0.0254
+	signature := make([]byte, 8)
+	if _, err := io.ReadFull(r, signature); err != nil {
+		return err
+	}
+	if !bytes.Equal(signature, []byte{137, 80, 78, 71, 13, 10, 26, 10}) {
+		return fmt.Errorf("invalid PNG signature")
+	}
+
+	var seenIHDR bool
+	for {
+		var length uint32
+		if err := binary.Read(r, binary.BigEndian, &length); err != nil {
+			return err
+		}
+
+		typeBytes := make([]byte, 4)
+		if _, err := io.ReadFull(r, typeBytes); err != nil {
+			return err
+		}
+		chunkType := string(typeBytes)
+
+		chunkData := make([]byte, length)
+		if _, err := io.ReadFull(r, chunkData); err != nil {
+			return err
+		}
+
+		// Skip CRC
+		if _, err := io.CopyN(io.Discard, r, 4); err != nil {
+			return err
+		}
+
+		switch chunkType {
+		case "IHDR":
+			if length != 13 {
+				return fmt.Errorf("invalid IHDR length")
+			}
+			meta.Width = int(binary.BigEndian.Uint32(chunkData[0:4]))
+			meta.Height = int(binary.BigEndian.Uint32(chunkData[4:8]))
+			bitDepth := int(chunkData[8])
+			colorType := chunkData[9]
+			meta.ColorDepth = bitDepth
+			meta.ColorType = describePNGColorType(colorType)
+			meta.HasAlpha = pngHasAlpha(colorType)
+			meta.ColorSpace = "Unspecified"
+			seenIHDR = true
+		case "pHYs":
+			if length == 9 {
+				x := binary.BigEndian.Uint32(chunkData[0:4])
+				y := binary.BigEndian.Uint32(chunkData[4:8])
+				unit := chunkData[8]
+				if unit == 1 {
+					meta.DPIWidth = math.Round(float64(x)*ppmToDPI*100) / 100
+					meta.DPIHeight = math.Round(float64(y)*ppmToDPI*100) / 100
+				}
+			}
+		case "sRGB":
+			meta.ColorSpace = "sRGB"
+		case "iCCP":
+			if meta.ColorSpace == "" || meta.ColorSpace == "Unspecified" {
+				meta.ColorSpace = "ICC Profile"
+			}
+		}
+
+		if chunkType == "IEND" {
+			break
+		}
+	}
+
+	if !seenIHDR {
+		return fmt.Errorf("IHDR chunk missing")
+	}
+
+	return nil
+}
+
+func parseJPEGMetadata(r io.ReadSeeker, meta *ImageMetadata) error {
+	if _, err := r.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+
+	if meta.ColorType == "" {
+		if cfg, _, err := image.DecodeConfig(r); err == nil {
+			meta.Width = cfg.Width
+			meta.Height = cfg.Height
+			colorType, hasAlpha, colorDepth := describeColorModel(cfg.ColorModel)
+			meta.ColorType = colorType
+			meta.HasAlpha = hasAlpha
+			if colorDepth > 0 {
+				meta.ColorDepth = colorDepth
+			}
+		}
+	}
+
+	if _, err := r.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+
+	ex, err := exif.Decode(r)
+	if err != nil {
+		if exif.IsExifError(err) {
+			meta.HasExif = false
+			return nil
+		}
+		return err
+	}
+
+	meta.HasExif = true
+
+	if tag, err := ex.Get(exif.XResolution); err == nil {
+		if rat, err := tag.Rat(0); err == nil {
+			if value, ok := rat.Float64(); ok {
+				meta.DPIWidth = math.Round(value*100) / 100
+			}
+		}
+	}
+	if tag, err := ex.Get(exif.YResolution); err == nil {
+		if rat, err := tag.Rat(0); err == nil {
+			if value, ok := rat.Float64(); ok {
+				meta.DPIHeight = math.Round(value*100) / 100
+			}
+		}
+	}
+	if tag, err := ex.Get(exif.ColorSpace); err == nil {
+		if val, err := tag.Int(0); err == nil {
+			meta.ColorSpace = describeExifColorSpace(val)
+		}
+	}
+	if tag, err := ex.Get(exif.BitsPerSample); err == nil {
+		if val, err := tag.Int(0); err == nil {
+			meta.ColorDepth = val
+		}
+	}
+	if meta.Width == 0 {
+		if tag, err := ex.Get(exif.PixelXDimension); err == nil {
+			if val, err := tag.Int(0); err == nil {
+				meta.Width = val
+			}
+		}
+	}
+	if meta.Height == 0 {
+		if tag, err := ex.Get(exif.PixelYDimension); err == nil {
+			if val, err := tag.Int(0); err == nil {
+				meta.Height = val
+			}
+		}
+	}
+
+	if meta.ColorType == "" {
+		meta.ColorType = "YCbCr"
+	}
+	meta.HasAlpha = false
+
+	if meta.ColorSpace == "" {
+		meta.ColorSpace = "Unspecified"
+	}
+
+	return nil
+}
+
+func describeColorModel(model color.Model) (string, bool, int) {
+	switch model {
+	case color.RGBAModel, color.NRGBAModel:
+		return "RGBA", true, 8
+	case color.RGBA64Model, color.NRGBA64Model:
+		return "RGBA", true, 16
+	case color.GrayModel:
+		return "Grayscale", false, 8
+	case color.Gray16Model:
+		return "Grayscale", false, 16
+	case color.CMYKModel:
+		return "CMYK", false, 8
+	case color.YCbCrModel:
+		return "YCbCr", false, 8
+	case color.AlphaModel, color.Alpha16Model:
+		return "Alpha", true, 8
+	default:
+		return "", false, 0
+	}
+}
+
+func describePNGColorType(colorType byte) string {
+	switch colorType {
+	case 0:
+		return "Grayscale"
+	case 2:
+		return "RGB"
+	case 3:
+		return "Indexed"
+	case 4:
+		return "Grayscale + Alpha"
+	case 6:
+		return "RGBA"
+	default:
+		return "Unknown"
+	}
+}
+
+func pngHasAlpha(colorType byte) bool {
+	return colorType == 4 || colorType == 6
+}
+
+func describeExifColorSpace(space int) string {
+	switch space {
+	case 1:
+		return "sRGB"
+	case 2:
+		return "Adobe RGB"
+	case 65535:
+		return "Uncalibrated"
+	default:
+		return fmt.Sprintf("Color space %d", space)
+	}
+}
+
+// GetExifData returns EXIF metadata for an image at the provided virtual path.
+func (m *Manager) GetExifData(virtualPath string) (*ExifData, error) {
+	physicalPath, err := m.resolvePath(virtualPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if !m.isPathSafe(physicalPath) {
+		return nil, fmt.Errorf("access denied: path outside managed directory")
+	}
+
+	info, err := os.Stat(physicalPath)
+	if err != nil {
+		return nil, fmt.Errorf("file not found: %w", err)
+	}
+
+	if info.IsDir() {
+		return &ExifData{Tags: map[string]string{}}, nil
+	}
+
+	mimeType := m.getMimeType(info.Name())
+	if !supportsExifMime(mimeType) {
+		return &ExifData{Tags: map[string]string{}}, nil
+	}
+
+	// #nosec G304 -- physicalPath is resolved via the virtual filesystem and cannot escape configured roots.
+	file, err := os.Open(physicalPath)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if cerr := file.Close(); cerr != nil {
+			log.Printf("Error closing EXIF file: %v", cerr)
+		}
+	}()
+
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+
+	ex, err := exif.Decode(file)
+	if err != nil {
+		if exif.IsExifError(err) {
+			return &ExifData{Tags: map[string]string{}}, nil
+		}
+		return nil, err
+	}
+
+	collector := &exifCollector{tags: make(map[string]string)}
+	if err := ex.Walk(collector); err != nil {
+		return nil, err
+	}
+
+	return &ExifData{Tags: collector.tags}, nil
+}
+
+func supportsExifMime(mime string) bool {
+	mime = strings.ToLower(mime)
+	return strings.Contains(mime, "jpeg") || strings.Contains(mime, "tiff") || strings.Contains(mime, "jpg")
+}
+
+type exifCollector struct {
+	tags map[string]string
+}
+
+func (c *exifCollector) Walk(name exif.FieldName, tag *tiff.Tag) error {
+	if tag == nil {
+		return nil
+	}
+	value := strings.TrimSpace(tag.String())
+	value = strings.Trim(value, "\"")
+	c.tags[string(name)] = value
+	return nil
 }
 
 // copyFile copies a single file

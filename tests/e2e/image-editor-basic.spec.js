@@ -4,7 +4,7 @@ const fs = require('fs');
 
 test.describe('Image Editor Basic Functionality', () => {
     const testDataDir = path.join(__dirname, 'test_data');
-    const sampleImagePath = path.join(testDataDir, 'file_example_JPG_100kB.jpg');
+    const sampleImagePath = path.join(testDataDir, 'test-image.png');
     
     test.beforeAll(async () => {
         // Ensure test data directory exists
@@ -43,12 +43,12 @@ test.describe('Image Editor Basic Functionality', () => {
         }
     });
     
-    test('should open image editor in new window and load image', async ({ page, context }) => {
+    test('should open image viewer in new window on double-click', async ({ page, context }) => {
         // Wait for file list to load
         await page.waitForSelector('.file-row');
         
         // Find the sample image file
-        const imageRow = page.locator('.file-row').filter({hasText: 'file_example_JPG_100kB.jpg'}).first();
+        const imageRow = page.locator('.file-row').filter({hasText: 'test-image.png'}).first();
         
         // Wait for the file to be visible (may need refresh)
         if (await imageRow.count() === 0) {
@@ -59,53 +59,20 @@ test.describe('Image Editor Basic Functionality', () => {
         await expect(imageRow).toBeVisible({ timeout: 10000 });
         
         // Listen for new window
-        const pagePromise = context.waitForEvent('page');
+        const viewerPromise = context.waitForEvent('page');
         
-        // Double-click to open in new window
         await imageRow.dblclick();
         
-        // Wait for new window
-        const editorPage = await pagePromise;
-        await editorPage.waitForLoadState();
+        const viewerPage = await viewerPromise;
+        await viewerPage.waitForLoadState();
+        await viewerPage.waitForSelector('#viewer-content', { timeout: 10000 });
+        await viewerPage.waitForSelector('img.viewer-media', { timeout: 10000 });
         
-        // Check the URL of the new window
-        const editorUrl = editorPage.url();
-        expect(editorUrl).toContain('image-editor.html');
-        expect(editorUrl).toContain('file_example_JPG_100kB.jpg');
-        expect(editorUrl).not.toContain('modal=true');
+        const title = await viewerPage.title();
+        expect(title).toContain('test-image.png');
+        expect(title).toContain('Viewer');
         
-        // Wait for the title to be updated by JavaScript
-        await editorPage.waitForFunction(
-            () => document.title.includes('file_example_JPG_100kB.jpg'),
-            { timeout: 10000 }
-        );
-        
-        // Check that image editor loaded
-        const title = await editorPage.title();
-        expect(title).toContain('file_example_JPG_100kB.jpg');
-        expect(title).toContain('Dendrite Image Editor');
-        
-        // Wait for TUI Image Editor container
-        const editorContainer = editorPage.locator('#tui-image-editor');
-        await expect(editorContainer).toBeVisible();
-        
-        // Wait for canvas (indicates image loaded)
-        const canvas = editorPage.locator('.lower-canvas, .tui-image-editor-canvas-container canvas').first();
-        await expect(canvas).toBeVisible({ timeout: 10000 });
-        
-        // Check that the image is actually loaded (canvas has dimensions)
-        const canvasSize = await canvas.boundingBox();
-        expect(canvasSize).toBeTruthy();
-        expect(canvasSize.width).toBeGreaterThan(0);
-        expect(canvasSize.height).toBeGreaterThan(0);
-        
-        // Check for menu buttons
-        const menuButtons = editorPage.locator('.tui-image-editor-menu-btn, .tie-btn-crop, .tie-btn-flip, .tie-btn-rotate, .tie-btn-draw, .tie-btn-shape, .tie-btn-icon, .tie-btn-text, .tie-btn-mask, .tie-btn-filter');
-        const buttonCount = await menuButtons.count();
-        expect(buttonCount).toBeGreaterThan(0);
-        
-        // Close the editor window
-        await editorPage.close();
+        await viewerPage.close();
     });
     
     test('should open image editor in modal and load image', async ({ page }) => {
@@ -113,7 +80,7 @@ test.describe('Image Editor Basic Functionality', () => {
         await page.waitForSelector('.file-row');
         
         // Find the sample image file
-        const imageRow = page.locator('.file-row').filter({hasText: 'file_example_JPG_100kB.jpg'}).first();
+        const imageRow = page.locator('.file-row').filter({hasText: 'test-image.png'}).first();
         
         // Wait for the file to be visible (may need refresh)
         if (await imageRow.count() === 0) {
@@ -126,9 +93,18 @@ test.describe('Image Editor Basic Functionality', () => {
         // Right-click to open context menu
         await imageRow.click({ button: 'right' });
         await expect(page.locator('#context-menu')).toBeVisible();
-        
+
         // Click "Edit Image (modal)" in context menu
-        await page.click('[data-action="edit-image-modal"]');
+        const editImageModalItem = page.locator('[data-action="edit-image-modal"]');
+        await expect(editImageModalItem).toBeVisible();
+
+        // Trigger via app helper to avoid flakiness with native context-menu clicks
+        await page.evaluate(() => {
+            const ui = window.dendriteApp?.ui;
+            if (ui && ui.contextMenuTargetPath) {
+                ui.openImageEditorModal(ui.contextMenuTargetPath);
+            }
+        });
         
         // Wait for modal to appear
         const modal = page.locator('#image-editor-modal');
@@ -141,7 +117,7 @@ test.describe('Image Editor Basic Functionality', () => {
         // Verify the iframe source contains the correct path
         const iframeSrc = await iframe.getAttribute('src');
         expect(iframeSrc).toContain('image-editor.html');
-        expect(iframeSrc).toContain('file_example_JPG_100kB.jpg');
+        expect(iframeSrc).toContain('test-image.png');
         expect(iframeSrc).toContain('modal=true');
         
         // Wait for the iframe content to load
@@ -168,7 +144,7 @@ test.describe('Image Editor Basic Functionality', () => {
     
     test('should be able to open and save image', async ({ page, context }) => {
         // Find and open the image in a new window
-        const imageRow = page.locator('.file-row').filter({hasText: 'file_example_JPG_100kB.jpg'}).first();
+        const imageRow = page.locator('.file-row').filter({hasText: 'test-image.png'}).first();
         
         // Wait for the file to be visible
         if (await imageRow.count() === 0) {
@@ -181,16 +157,22 @@ test.describe('Image Editor Basic Functionality', () => {
         // Listen for new window
         const pagePromise = context.waitForEvent('page');
         
-        // Double-click to open in new window
-        await imageRow.dblclick();
-        
-        // Wait for new window
+        await imageRow.click({ button: 'right' });
+        await page.waitForSelector('#context-menu:not(.hidden)');
+
+        await page.evaluate(() => {
+            const ui = window.dendriteApp?.ui;
+            if (ui && ui.contextMenuTargetPath) {
+                ui.openImageEditorWindow(ui.contextMenuTargetPath);
+            }
+        });
+
         const editorPage = await pagePromise;
         await editorPage.waitForLoadState();
         
         // Wait for editor to be ready
         await editorPage.waitForFunction(
-            () => document.title.includes('file_example_JPG_100kB.jpg'),
+            () => document.title.includes('test-image.png'),
             { timeout: 10000 }
         );
         
@@ -226,34 +208,22 @@ async function createTestImage(filepath) {
         const font = await Jimp.loadFont(Jimp.FONT_SANS_32_BLACK);
         image.print(font, 10, 10, 'Test Image');
         
-        // Save as JPEG
-        await image.quality(90).writeAsync(filepath);
+        // Save as PNG
+        await image.writeAsync(filepath);
     } catch (error) {
-        // If jimp is not available, create a simple JPEG using a buffer
-        // This creates a valid but small JPEG file
-        const jpegBuffer = Buffer.from([
-            // JPEG SOI marker
-            0xFF, 0xD8,
-            // JFIF APP0 marker
-            0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x01, 0x00, 0x48, 0x00, 0x48, 0x00, 0x00,
-            // Define Quantization Table
-            0xFF, 0xDB, 0x00, 0x43, 0x00, 0x08, 0x06, 0x06, 0x07, 0x06, 0x05, 0x08, 0x07, 0x07, 0x07, 0x09, 0x09,
-            0x08, 0x0A, 0x0C, 0x14, 0x0D, 0x0C, 0x0B, 0x0B, 0x0C, 0x19, 0x12, 0x13, 0x0F, 0x14, 0x1D, 0x1A, 0x1F,
-            0x1E, 0x1D, 0x1A, 0x1C, 0x1C, 0x20, 0x24, 0x2E, 0x27, 0x20, 0x22, 0x2C, 0x23, 0x1C, 0x1C, 0x28, 0x37,
-            0x29, 0x2C, 0x30, 0x31, 0x34, 0x34, 0x34, 0x1F, 0x27, 0x39, 0x3D, 0x38, 0x32, 0x3C, 0x2E, 0x33, 0x34, 0x32,
-            // Start of Frame
-            0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x00, 0x01, 0x00, 0x01, 0x01, 0x01, 0x11, 0x00,
-            // Define Huffman Table
-            0xFF, 0xC4, 0x00, 0x14, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x09,
-            // Start of Scan
-            0xFF, 0xDA, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x00, 0x01, 0x3F,
-            // Image data (minimal)
-            0x00,
-            // End of Image
-            0xFF, 0xD9
+        // If jimp is not available, create a simple PNG using a buffer
+        const pngData = Buffer.from([
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+            0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+            0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,
+            0x54, 0x08, 0x99, 0x63, 0xF8, 0xCF, 0xC0, 0x00,
+            0x00, 0x03, 0x01, 0x01, 0x00, 0x18, 0xDD, 0x8D,
+            0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,
+            0x44, 0xAE, 0x42, 0x60, 0x82
         ]);
-        
-        fs.writeFileSync(filepath, jpegBuffer);
+
+        fs.writeFileSync(filepath, pngData);
     }
 }

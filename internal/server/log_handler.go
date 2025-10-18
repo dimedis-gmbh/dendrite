@@ -63,14 +63,20 @@ var (
 	followersMu sync.RWMutex
 )
 
+func ensureLogFileExtension(w http.ResponseWriter, filePath string) bool {
+	if !strings.HasSuffix(strings.ToLower(filePath), ".log") {
+		http.Error(w, "Only .log files can be viewed", http.StatusBadRequest)
+		return false
+	}
+	return true
+}
+
 // serveLogView handles REST API requests for log viewing
 func (s *Server) serveLogView(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	filePath := vars["path"]
 
-	// Ensure it's a .log file
-	if !strings.HasSuffix(strings.ToLower(filePath), ".log") {
-		http.Error(w, "Only .log files can be viewed", http.StatusBadRequest)
+	if !ensureLogFileExtension(w, filePath) {
 		return
 	}
 
@@ -147,9 +153,7 @@ func (s *Server) serveLogFollow(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	filePath := vars["path"]
 
-	// Ensure it's a .log file
-	if !strings.HasSuffix(strings.ToLower(filePath), ".log") {
-		http.Error(w, "Only .log files can be viewed", http.StatusBadRequest)
+	if !ensureLogFileExtension(w, filePath) {
 		return
 	}
 

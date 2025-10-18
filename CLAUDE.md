@@ -53,12 +53,13 @@ The application accepts these arguments:
 ### Frontend
 - Pure and handcrafted JS
 - Windows Explorer-like interface
-- Drag and drop file upload and file/folder movement
 - Keyboard shortcuts (Ctrl/Cmd+X, C, V)
 - Context menus for file operations
 - Status bar showing quota usage
-- File type icons using built-in ExtJS icons
+- File type icons
 - No external CDN dependencies (GDPR compliance)
+- Based on Tailwind CSS
+- Uses Tailwind Plus ready-to-use component whenever possible.
 
 ## Key Constraints
 

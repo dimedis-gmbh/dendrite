@@ -45,11 +45,9 @@ class Clipboard {
                 row.style.opacity = '1';
             }
         });
-        
-        // Update context menu paste state
-        const pasteItem = document.querySelector('[data-action="paste"]');
-        if (pasteItem) {
-            pasteItem.classList.toggle('disabled', this.isEmpty());
+
+        if (window.dendriteApp && window.dendriteApp.ui && typeof window.dendriteApp.ui.updatePasteControls === 'function') {
+            window.dendriteApp.ui.updatePasteControls();
         }
     }
 }

@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Dendrite File Viewer</title>
+    <link rel="icon" type="image/svg+xml" href="/images/favicon.svg">
+    <link rel="stylesheet" href="/css/styles.css">
+    <style>
+        :root {
+            color-scheme: light;
+        }
+
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #f8fafc;
+            color: #0f172a;
+        }
+
+        .viewer-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .viewer-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 18px;
+            background: #1e293b;
+            color: #f8fafc;
+            box-shadow: 0 2px 4px rgba(15, 23, 42, 0.2);
+        }
+
+        .viewer-filename {
+            font-size: 0.95rem;
+            font-weight: 600;
+            margin: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .viewer-content {
+            flex: 1;
+            position: relative;
+            background: #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            overflow: auto;
+        }
+
+        .viewer-status {
+            font-size: 0.9rem;
+            color: #475569;
+        }
+
+        .viewer-status.error {
+            color: #b91c1c;
+        }
+
+        .viewer-text {
+            width: 100%;
+            max-width: 960px;
+            margin: 0 auto;
+            background: #0f172a;
+            color: #f8fafc;
+            padding: 24px;
+            border-radius: 8px;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.25);
+            overflow: auto;
+            font-family: ui-monospace, SFMono-Regular, SFMono, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            white-space: pre-wrap;
+            word-break: break-word;
+            line-height: 1.5;
+        }
+
+        .viewer-text code {
+            white-space: pre-wrap;
+        }
+
+        .viewer-media {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 8px;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.25);
+            background: #0f172a;
+        }
+
+        .viewer-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 8px;
+            background: #0f172a;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.25);
+        }
+
+        @media (max-width: 768px) {
+            .viewer-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 4px;
+            }
+
+            .viewer-filename {
+                font-size: 0.9rem;
+            }
+
+            .viewer-text {
+                padding: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="viewer-container">
+        <header class="viewer-header">
+            <h1 class="viewer-filename" id="viewer-filename">Loading…</h1>
+        </header>
+        <main class="viewer-content" id="viewer-content">
+            <div class="viewer-status" id="viewer-status">Loading file…</div>
+        </main>
+    </div>
+
+    <script src="/js/api.js"></script>
+    <script>
+        (function () {
+            const params = new URLSearchParams(window.location.search);
+            const path = params.get('path');
+            const explicitType = params.get('type');
+            const statusEl = document.getElementById('viewer-status');
+            const contentEl = document.getElementById('viewer-content');
+            const fileNameEl = document.getElementById('viewer-filename');
+            const objectUrls = [];
+
+            const registerObjectUrl = (url) => {
+                objectUrls.push(url);
+                return url;
+            };
+
+            window.addEventListener('beforeunload', () => {
+                objectUrls.forEach(url => URL.revokeObjectURL(url));
+            });
+
+            if (!path) {
+                statusEl.textContent = 'No file path provided.';
+                statusEl.classList.add('error');
+                return;
+            }
+
+            const fileName = path.split('/').filter(Boolean).pop() || path;
+            document.title = `${fileName} · Dendrite Viewer`;
+            fileNameEl.textContent = fileName;
+
+            const api = new DendriteAPI();
+
+            const detectType = (name, hintedType) => {
+                if (hintedType) {
+                    return hintedType;
+                }
+
+                const ext = (name.split('.').pop() || '').toLowerCase();
+
+                if (['log'].includes(ext)) return 'text';
+                if (['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'avif', 'tif', 'tiff', 'heic', 'heif'].includes(ext)) return 'image';
+                if (['svg'].includes(ext)) return 'text';
+                if (['mp4', 'webm', 'ogg', 'ogv', 'mov', 'm4v', 'mkv', 'avi'].includes(ext)) return 'video';
+                if (['mp3', 'ogg', 'oga', 'wav', 'flac', 'aac', 'm4a'].includes(ext)) return 'audio';
+                if (ext === 'pdf') return 'pdf';
+                if (ext === 'html' || ext === 'htm') return 'html';
+
+                const textExtensions = [
+                    'txt', 'md', 'json', 'js', 'jsx', 'ts', 'tsx', 'css', 'scss', 'sass', 'less',
+                    'xml', 'yaml', 'yml', 'toml', 'ini', 'conf', 'config', 'sh', 'bash', 'zsh',
+                    'fish', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'php', 'sql',
+                    'env', 'gitignore', 'dockerfile', 'makefile', 'readme', 'license', 'editorconfig'
+                ];
+
+                if (textExtensions.includes(ext) || textExtensions.includes(name.toLowerCase())) {
+                    return 'text';
+                }
+
+                return 'binary';
+            };
+
+            const showStatus = (message, isError = false) => {
+                statusEl.textContent = message;
+                statusEl.classList.toggle('error', isError);
+            };
+
+            const replaceContent = (node) => {
+                contentEl.innerHTML = '';
+                contentEl.appendChild(node);
+            };
+
+            const renderText = async (blob) => {
+                const text = await blob.text();
+                const pre = document.createElement('pre');
+                pre.className = 'viewer-text';
+                pre.textContent = text;
+                replaceContent(pre);
+            };
+
+            const renderImage = (blob) => {
+                const url = registerObjectUrl(URL.createObjectURL(blob));
+                const img = document.createElement('img');
+                img.src = url;
+                img.alt = fileName;
+                img.className = 'viewer-media';
+                img.onload = () => URL.revokeObjectURL(url);
+                replaceContent(img);
+            };
+
+            const renderVideo = (blob) => {
+                const url = registerObjectUrl(URL.createObjectURL(blob));
+                const video = document.createElement('video');
+                video.src = url;
+                video.controls = true;
+                video.className = 'viewer-media';
+                video.style.maxHeight = '100%';
+                video.style.backgroundColor = '#000';
+                replaceContent(video);
+            };
+
+            const renderAudio = (blob) => {
+                const url = registerObjectUrl(URL.createObjectURL(blob));
+                const wrapper = document.createElement('div');
+                wrapper.style.display = 'flex';
+                wrapper.style.justifyContent = 'center';
+                wrapper.style.width = '100%';
+                const audio = document.createElement('audio');
+                audio.src = url;
+                audio.controls = true;
+                audio.style.width = '60%';
+                audio.style.minWidth = '280px';
+                audio.style.maxWidth = '600px';
+                audio.style.boxShadow = '0 12px 30px rgba(15, 23, 42, 0.25)';
+                audio.style.borderRadius = '8px';
+                audio.style.background = '#0f172a';
+                wrapper.appendChild(audio);
+                replaceContent(wrapper);
+            };
+
+            const renderIframe = async (blob, desiredType = '') => {
+                let effectiveBlob = blob;
+                let effectiveType = blob.type;
+
+                if (desiredType && blob.type !== desiredType) {
+                    const buffer = await blob.arrayBuffer();
+                    effectiveBlob = new Blob([buffer], { type: desiredType });
+                    effectiveType = desiredType;
+                }
+
+                const url = registerObjectUrl(URL.createObjectURL(effectiveBlob));
+                const iframe = document.createElement('iframe');
+                iframe.src = url;
+                iframe.className = 'viewer-iframe';
+                if (effectiveType) {
+                    iframe.dataset.mimeType = effectiveType;
+                }
+                replaceContent(iframe);
+            };
+
+            const renderBinaryUnsupported = () => {
+                const message = document.createElement('div');
+                message.className = 'viewer-status error';
+                message.textContent = 'This file type cannot be previewed in the browser. Use the download action to retrieve it.';
+                replaceContent(message);
+            };
+
+            api.downloadFile(path, { inline: true }).then(async (response) => {
+                let blob = await response.blob();
+                const viewerType = detectType(fileName, explicitType);
+
+                switch (viewerType) {
+                    case 'image':
+                        renderImage(blob);
+                        break;
+                    case 'video':
+                        renderVideo(blob);
+                        break;
+                    case 'audio':
+                        renderAudio(blob);
+                        break;
+                    case 'pdf':
+                        await renderIframe(blob, 'application/pdf');
+                        break;
+                    case 'html':
+                        await renderIframe(blob);
+                        break;
+                    case 'text':
+                    case 'log':
+                        await renderText(blob);
+                        break;
+                    default:
+                        renderBinaryUnsupported();
+                        break;
+                }
+            }).catch((error) => {
+                console.error('Failed to load file for viewing:', error);
+                showStatus('Unable to load file. Please try again or use download instead.', true);
+            });
+        })();
+    </script>
+</body>
+</html>

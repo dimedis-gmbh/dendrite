@@ -68,10 +68,19 @@ class DendriteAPI {
         return this.requestJSON(`/files/${encodeURIComponent(normalizedPath)}/stat`);
     }
 
-    // Download file
-    async downloadFile(path) {
+    async getFileExif(path) {
         const normalizedPath = path.startsWith('/') ? path.substring(1) : path;
-        return this.request(`/files/${encodeURIComponent(normalizedPath)}`);
+        return this.requestJSON(`/files/${encodeURIComponent(normalizedPath)}/exif`);
+    }
+
+    // Download file
+    async downloadFile(path, { inline = false } = {}) {
+        const normalizedPath = path.startsWith('/') ? path.substring(1) : path;
+        let endpoint = `/files/${encodeURIComponent(normalizedPath)}`;
+        if (inline) {
+            endpoint += '?inline=1';
+        }
+        return this.request(endpoint);
     }
 
     // Upload file
@@ -96,26 +105,23 @@ class DendriteAPI {
 
     // Move file or directory
     async moveFile(sourcePath, destPath) {
-        // Normalize paths - remove leading slash for API URL construction
-        const normalizedSourcePath = sourcePath.startsWith('/') ? sourcePath.substring(1) : sourcePath;
-        const normalizedDestPath = destPath.startsWith('/') ? destPath.substring(1) : destPath;
-        
-        return this.requestJSON(`/files/${encodeURIComponent(normalizedSourcePath)}/move`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ destPath: normalizedDestPath })
-        });
+        return this.postFileMutation('move', sourcePath, destPath);
     }
 
     // Copy file or directory
     async copyFile(sourcePath, destPath) {
-        // Normalize paths - remove leading slash for API URL construction
-        const normalizedSourcePath = sourcePath.startsWith('/') ? sourcePath.substring(1) : sourcePath;
-        const normalizedDestPath = destPath.startsWith('/') ? destPath.substring(1) : destPath;
-        
-        return this.requestJSON(`/files/${encodeURIComponent(normalizedSourcePath)}/copy`, {
+        return this.postFileMutation('copy', sourcePath, destPath);
+    }
+
+    normalizeApiPath(path = '') {
+        return path.startsWith('/') ? path.substring(1) : path;
+    }
+
+    async postFileMutation(action, sourcePath, destPath) {
+        const normalizedSourcePath = this.normalizeApiPath(sourcePath);
+        const normalizedDestPath = this.normalizeApiPath(destPath);
+
+        return this.requestJSON(`/files/${encodeURIComponent(normalizedSourcePath)}/${action}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'

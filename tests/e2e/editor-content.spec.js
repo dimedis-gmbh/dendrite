@@ -178,16 +178,14 @@ test.describe.serial('Dendrite Editor Content Display', () => {
             if (await fileRow.count() > 0) {
                 await fileRow.click({ button: 'right' });
                 
-                // Edit options should be disabled or show error
+                // Edit options should be hidden and disabled
                 const editModal = page.locator('[data-action="edit-modal"]');
                 const editWindow = page.locator('[data-action="edit-window"]');
-                
-                // Check if they have disabled class or are not clickable
-                const modalClasses = await editModal.getAttribute('class');
-                const windowClasses = await editWindow.getAttribute('class');
-                
-                // At least one should indicate it's disabled
-                expect(modalClasses + windowClasses).toMatch(/disabled/);
+
+                await expect(editModal).toBeHidden();
+                await expect(editWindow).toBeHidden();
+                await expect(editModal).toHaveClass(/disabled/);
+                await expect(editWindow).toHaveClass(/disabled/);
             }
         } finally {
             // Clean up

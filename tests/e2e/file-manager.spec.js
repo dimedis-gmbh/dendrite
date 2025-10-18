@@ -3,6 +3,8 @@ const {test, expect} = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
 
+const SAMPLE_EXIF_JPEG_BASE64 = '/9j/4QGPRXhpZgAATU0AKgAAAAgACQEPAAIAAAAMAAAAegEQAAIAAAAHAAAAhgEaAAUAAAABAAAAjQEbAAUAAAABAAAAlQEoAAMAAAABAAIAAAExAAIAAAAHAAAAnQE7AAIAAAAHAAAApIdpAAQAAAABAAAAq4glAAQAAAABAAABJQAAAABEZW5kcml0ZUNhbQBNb2RlbFgAAAABLAAAAAEAAAEsAAAAAXBpZXhpZgBUZXN0ZXIAAAeCmgAFAAAAAQAAAQGCnQAFAAAAAQAAAQmIJwADAAAAAQDIAACQAwACAAAAFAAAARGgAQADAAAAAQABAACgAgAEAAAAAQAAAAOgAwAEAAAAAQAAAAIAAAABAAAAfQAAABwAAAAKMjAyNToxMDowOCAyMDo0MDowMAAABAABAAIAAAACTgAAAAACAAUAAAADAAABVwADAAIAAAACRQAAAAAEAAUAAAADAAABbwAAACgAAAABAAAAAAAAAAEAAAAAAAAAAQAAAEoAAAABAAAAAAAAAAEAAAAAAAAAAf/bAEMAAwICAwICAwMDAwQDAwQFCAUFBAQFCgcHBggMCgwMCwoLCw0OEhANDhEOCwsQFhARExQVFRUMDxcYFhQYEhQVFP/bAEMBAwQEBQQFCQUFCRQNCw0UFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFP/AABEIAAIAAwMBIgACEQEDEQH/xAAfAAABBQEBAQEBAQAAAAAAAAAAAQIDBAUGBwgJCgv/xAC1EAACAQMDAgQDBQUEBAAAAX0BAgMABBEFEiExQQYTUWEHInEUMoGRoQgjQrHBFVLR8CQzYnKCCQoWFxgZGiUmJygpKjQ1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4eLj5OXm5+jp6vHy8/T19vf4+fr/xAAfAQADAQEBAQEBAQEBAAAAAAAAAQIDBAUGBwgJCgv/xAC1EQACAQIEBAMEBwUEBAABAncAAQIDEQQFITEGEkFRB2FxEyIygQgUQpGhscEJIzNS8BVictEKFiQ04SXxFxgZGiYnKCkqNTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqCg4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2dri4+Tl5ufo6ery8/T19vf4+fr/2gAMAwEAAhEDEQA/APW6KKK/Aj8vP//Z';
+
 test.describe.serial('Dendrite File Manager', () => {
     const testDataDir = path.join(__dirname, 'test_data');
     const subfolderPath = path.join(testDataDir, 'subfolder');
@@ -118,19 +120,20 @@ test.describe.serial('Dendrite File Manager', () => {
         await expect(page).toHaveTitle('Dendrite File Manager');
 
         // Check main UI elements are present
-        await expect(page.locator('#status-bar')).toBeVisible();
-        await expect(page.locator('#toolbar')).toBeVisible();
+        await expect(page.locator('#path-display')).toBeVisible();
+        await expect(page.locator('#file-list-container')).toBeVisible();
         await expect(page.locator('#file-list')).toBeVisible();
 
         // Check quota info is displayed
         await expect(page.locator('#quota-text')).toContainText('MB');
 
         // Check toolbar buttons
-        await expect(page.locator('#btn-back')).toBeVisible();
         await expect(page.locator('#btn-up')).toBeVisible();
         await expect(page.locator('#btn-refresh')).toBeVisible();
         await expect(page.locator('#btn-download')).toBeVisible();
         await expect(page.locator('#btn-download-zip')).toBeVisible();
+        await expect(page.locator('#btn-upload')).toBeVisible();
+        await expect(page.locator('#btn-new-folder')).toBeVisible();
     });
 
     test('should display files and folders', async ({page, browserName}) => {
@@ -269,12 +272,12 @@ test.describe.serial('Dendrite File Manager', () => {
         await expect(contextMenu).toBeVisible();
 
         // Check menu items
-        await expect(contextMenu.locator('text=Open')).toBeVisible();
-        await expect(contextMenu.locator('text=Download')).toBeVisible();
-        await expect(contextMenu.locator('text=Cut')).toBeVisible();
-        await expect(contextMenu.locator('text=Copy')).toBeVisible();
-        await expect(contextMenu.locator('text=Paste')).toBeVisible();
-        await expect(contextMenu.locator('text=Properties')).toBeVisible();
+        await expect(contextMenu.locator('[data-action="open"]')).toBeVisible();
+        await expect(contextMenu.locator('[data-action="download"]')).toBeVisible();
+        await expect(contextMenu.locator('[data-action="cut"]')).toBeVisible();
+        await expect(contextMenu.locator('[data-action="copy"]')).toBeVisible();
+        await expect(contextMenu.locator('[data-action="paste"]')).toBeVisible();
+        await expect(contextMenu.locator('[data-action="properties"]')).toBeVisible();
 
         // Click elsewhere to close menu
         await page.locator('#file-list-container').click();
@@ -282,36 +285,63 @@ test.describe.serial('Dendrite File Manager', () => {
     });
 
     test('should show file properties on context menu', async ({page}) => {
-        // Wait for file list to load
-        await page.waitForSelector('.file-row', {timeout: 10000});
-        await page.waitForFunction(() => {
-            const rows = document.querySelectorAll('.file-row');
-            return rows.length > 0;
-        }, {timeout: 10000});
+        const imageFileName = `image-properties-${Date.now()}.jpg`;
+        const imageFilePath = path.join(testDataDir, imageFileName);
 
-        // Right-click on a file
-        const fileRow = page.locator('.file-row').filter({hasText: 'sample.txt'});
-        await expect(fileRow).toBeVisible({timeout: 10000});
-        await fileRow.click({button: 'right'});
+        try {
+            fs.writeFileSync(imageFilePath, Buffer.from(SAMPLE_EXIF_JPEG_BASE64, 'base64'));
 
-        // Click Properties
-        await page.locator('[data-action="properties"]').click();
+            await page.reload();
+            await page.waitForSelector('.file-row', {timeout: 10000});
+            await page.waitForFunction(() => {
+                const rows = document.querySelectorAll('.file-row');
+                return rows.length > 0;
+            }, {timeout: 10000});
 
-        // Verify properties modal opens
-        const propertiesModal = page.locator('#properties-modal');
-        await expect(propertiesModal).toBeVisible({timeout: 10000});
+            const imageRow = page.locator('.file-row').filter({hasText: imageFileName}).first();
+            await expect(imageRow).toBeVisible({timeout: 10000});
+            await imageRow.click({button: 'right'});
 
-        // Check properties content
-        const content = page.locator('#properties-content');
-        await expect(content).toContainText('Name:');
-        await expect(content).toContainText('sample.txt');
-        await expect(content).toContainText('Size:');
-        await expect(content).toContainText('Modified:');
-        await expect(content).toContainText('Mode:');
+            await page.locator('[data-action="properties"]').click();
 
-        // Close modal
-        await page.locator('#properties-modal .close').click();
-        await expect(propertiesModal).toBeHidden();
+            const propertiesModal = page.locator('#properties-modal');
+            await expect(propertiesModal).toBeVisible({timeout: 10000});
+
+            const content = propertiesModal.locator('#properties-content');
+            const rows = content.locator('tr');
+            const valueCell = (label) => rows.filter({ hasText: label }).locator('td').nth(1);
+
+            await expect(valueCell('Name:')).toHaveText(imageFileName);
+            await expect(valueCell('MIME Type:')).toHaveText('image/jpeg');
+            await expect(valueCell('Dimensions:')).toHaveText('3 × 2 px');
+            await expect(valueCell('Color depth:')).toHaveText('8-bit');
+            await expect(valueCell('Color type:')).toHaveText('YCbCr');
+            await expect(valueCell('Color space:')).toHaveText('sRGB');
+            await expect(valueCell('Resolution:')).toContainText('300.00 DPI');
+
+            await page.locator('#properties-modal .close').click();
+            await expect(propertiesModal).toBeHidden();
+
+            await imageRow.click({button: 'right'});
+            const exifItem = page.locator('[data-action="exif"]');
+            await expect(exifItem).toBeVisible();
+            await exifItem.click();
+
+            const exifModal = page.locator('#exif-modal');
+            await expect(exifModal).toBeVisible({ timeout: 10000 });
+            const exifContent = exifModal.locator('#exif-content');
+            await expect(exifContent).toContainText('Make');
+            await expect(exifContent).toContainText('DendriteCam');
+            await expect(exifContent).toContainText('ModelX');
+
+            await page.locator('#exif-modal .close').click();
+            await expect(exifModal).toBeHidden();
+        } finally {
+            if (fs.existsSync(imageFilePath)) {
+                fs.unlinkSync(imageFilePath);
+            }
+            await page.reload();
+        }
     });
 
     test('should navigate up with up button', async ({page}) => {
@@ -361,15 +391,13 @@ test.describe.serial('Dendrite File Manager', () => {
         await expect(page.locator('text=sample.txt')).toBeVisible();
     });
 
-    test('should show error when trying to download without selection', async ({page}) => {
-        // Click download button without selecting anything
-        await page.locator('#btn-download').click();
+    test('should keep download action disabled when nothing is selected', async ({page}) => {
+        const downloadButton = page.locator('#btn-download');
+        await expect(downloadButton).toBeDisabled();
 
-        // Wait for error alert
-        await page.waitForFunction(() => {
-            return window.document.body.textContent.includes('No files selected') ||
-                window.confirm || window.alert;
-        }, {timeout: 5000});
+        // Force-click should not trigger an error modal
+        await downloadButton.click({ force: true });
+        await expect(page.locator('#error-modal')).toHaveClass(/hidden/);
     });
 
     test('should update quota information', async ({page}) => {
@@ -438,8 +466,10 @@ test.describe.serial('Dendrite File Manager', () => {
         await expect(uploadModal).toBeVisible();
 
         // Check modal content
-        await expect(page.locator('#drop-zone')).toBeVisible();
-        await expect(page.locator('#drop-zone')).toContainText('Drag and drop files');
+        const dropZone = page.locator('#drop-zone');
+        await expect(dropZone).toBeVisible();
+        await expect(dropZone).toContainText('Upload files');
+        await expect(dropZone).toContainText('or drag and drop');
 
         // Close modal
         await page.locator('#upload-modal .close').click();
@@ -497,6 +527,11 @@ test.describe.serial('Dendrite File Manager', () => {
         const testFile = page.locator('.file-row').filter({hasText: 'test.md'});
         await expect(testFile).toBeVisible();
 
+        const copiedFilePath = path.join(subfolderPath, 'test.md');
+        if (fs.existsSync(copiedFilePath)) {
+            fs.unlinkSync(copiedFilePath);
+        }
+
         // Right-click on the file and copy it
         await testFile.click({button: 'right'});
         const contextMenu = page.locator('#context-menu');
@@ -507,6 +542,9 @@ test.describe.serial('Dendrite File Manager', () => {
         await expect(copyOption).toBeVisible();
         await copyOption.click();
         await expect(contextMenu).toBeHidden();
+
+        const pasteButton = page.locator('#btn-paste');
+        await expect(pasteButton).toBeEnabled();
 
         // Navigate to subfolder
         const subfolderDir = page.locator('.file-row').filter({hasText: 'subfolder'});
@@ -528,16 +566,221 @@ test.describe.serial('Dendrite File Manager', () => {
 
         const pasteOption = pasteContextMenu.locator('[data-action="paste"]');
         await expect(pasteOption).toBeVisible();
-
-        // Note: We don't actually click paste as it would create a real file
-        // Just verify the option is available
-        
-        // Close menu
-        await page.keyboard.press('Escape');
+        await pasteOption.click();
         await expect(pasteContextMenu).toBeHidden();
-        
-        // Navigate back
+
+        const copiedRow = page.locator('.file-row').filter({hasText: 'test.md'});
+        await expect(copiedRow).toBeVisible({ timeout: 10000 });
+
+        await page.evaluate(() => window.clipboard.clear());
+        await expect(pasteButton).toBeDisabled();
+
+        if (fs.existsSync(copiedFilePath)) {
+            fs.unlinkSync(copiedFilePath);
+        }
+
+        await page.reload();
         await page.locator('#btn-up').click();
         await page.waitForTimeout(1000);
+    });
+
+    test('should paste file into folder via folder context menu', async ({page}) => {
+        const fileName = 'sample.txt';
+        const destinationPath = path.join(subfolderPath, fileName);
+
+        if (fs.existsSync(destinationPath)) {
+            fs.unlinkSync(destinationPath);
+        }
+
+        const sourceRow = page.locator('.file-row').filter({ hasText: fileName }).first();
+        await expect(sourceRow).toBeVisible();
+
+        const contextMenu = page.locator('#context-menu');
+
+        await sourceRow.click({ button: 'right' });
+        await expect(contextMenu).toBeVisible();
+        await contextMenu.locator('[data-action="copy"]').click();
+        await expect(contextMenu).toBeHidden();
+
+        const folderRow = page.locator('.file-row').filter({ hasText: 'subfolder' }).first();
+        await expect(folderRow).toBeVisible();
+
+        await folderRow.click({ button: 'right' });
+        await expect(contextMenu).toBeVisible();
+
+        const pasteOption = contextMenu.locator('[data-action="paste"]');
+        await expect(pasteOption).toBeVisible();
+        await expect(pasteOption).not.toHaveClass(/disabled/);
+
+        await pasteOption.click();
+        await expect(contextMenu).toBeHidden();
+
+        await expect.poll(() => fs.existsSync(destinationPath)).toBe(true);
+
+        await folderRow.dblclick();
+        await page.waitForFunction(() => {
+            const display = document.querySelector('#path-display');
+            return display && display.textContent && display.textContent.includes('subfolder');
+        }, { timeout: 10000 });
+
+        const pastedFileRow = page.locator('.file-row').filter({ hasText: fileName }).first();
+        await expect(pastedFileRow).toBeVisible({ timeout: 10000 });
+
+        await page.locator('#btn-up').click();
+        await page.waitForFunction(() => {
+            const display = document.querySelector('#path-display');
+            return display && display.textContent === '/';
+        }, { timeout: 10000 });
+
+        if (fs.existsSync(destinationPath)) {
+            fs.unlinkSync(destinationPath);
+        }
+
+        await page.locator('#btn-refresh').click();
+        await page.waitForTimeout(500);
+    });
+
+    test('should cut and paste file between folders', async ({page}) => {
+        const tempFileName = `temp-cut-${Date.now()}.txt`;
+        const tempFilePath = path.join(testDataDir, tempFileName);
+
+        fs.writeFileSync(tempFilePath, 'Temporary file used for cut/paste tests.');
+
+        await page.reload();
+        await page.waitForSelector('.file-row');
+
+        const tempFileRow = page.locator('.file-row').filter({ hasText: tempFileName }).first();
+        await expect(tempFileRow).toBeVisible();
+
+        // Cut the temporary file
+        await tempFileRow.click({ button: 'right' });
+        await page.waitForSelector('#context-menu:not(.hidden)');
+        await page.locator('[data-action="cut"]').click();
+
+        // Navigate into subfolder and paste
+        const subfolderDir = page.locator('.file-row').filter({ hasText: 'subfolder' }).first();
+        await expect(subfolderDir).toBeVisible();
+        await subfolderDir.dblclick();
+        await page.waitForFunction(() => {
+            const display = document.querySelector('#path-display');
+            return display && display.textContent && display.textContent.includes('subfolder');
+        }, { timeout: 10000 });
+
+        const container = page.locator('#file-list-container');
+        await container.click({ button: 'right' });
+        await page.waitForSelector('#context-menu:not(.hidden)');
+        await page.locator('[data-action="paste"]').click();
+
+        const pastedRow = page.locator('.file-row').filter({ hasText: tempFileName }).first();
+        await expect(pastedRow).toBeVisible({ timeout: 10000 });
+
+        // Ensure file removed from root
+        await page.locator('#btn-up').click();
+        await page.waitForFunction(() => {
+            const display = document.querySelector('#path-display');
+            return display && display.textContent === '/';
+        }, { timeout: 10000 });
+        await expect(page.locator('.file-row').filter({ hasText: tempFileName })).toHaveCount(0);
+
+        // Move file back to root using cut/paste
+        await subfolderDir.dblclick();
+        await page.waitForFunction(() => {
+            const display = document.querySelector('#path-display');
+            return display && display.textContent && display.textContent.includes('subfolder');
+        }, { timeout: 10000 });
+
+        await pastedRow.click({ button: 'right' });
+        await page.waitForSelector('#context-menu:not(.hidden)');
+        await page.locator('[data-action="cut"]').click();
+
+        await page.locator('#btn-up').click();
+        await page.waitForFunction(() => {
+            const display = document.querySelector('#path-display');
+            return display && display.textContent === '/';
+        }, { timeout: 10000 });
+
+        await container.click({ button: 'right', position: { x: 20, y: 20 } });
+        await page.waitForSelector('#context-menu:not(.hidden)');
+        await page.locator('[data-action="paste"]').click();
+
+        const restoredRow = page.locator('.file-row').filter({ hasText: tempFileName }).first();
+        await expect(restoredRow).toBeVisible({ timeout: 10000 });
+
+        await page.evaluate(() => window.clipboard.clear());
+
+        if (fs.existsSync(tempFilePath)) {
+            fs.unlinkSync(tempFilePath);
+        }
+
+        await page.reload();
+    });
+
+    test('should delete file via context menu without prior selection', async ({page}) => {
+        const tempFileName = `temp-delete-${Date.now()}.txt`;
+        const tempFilePath = path.join(testDataDir, tempFileName);
+
+        fs.writeFileSync(tempFilePath, 'Temporary file used for delete tests.');
+
+        await page.reload();
+        await page.waitForSelector('.file-row');
+
+        const tempFileRow = page.locator('.file-row').filter({ hasText: tempFileName }).first();
+        await expect(tempFileRow).toBeVisible();
+
+        await tempFileRow.click({ button: 'right' });
+        await page.waitForSelector('#context-menu:not(.hidden)');
+        await page.locator('[data-action="delete"]').click();
+
+        const deleteModal = page.locator('#delete-modal');
+        const deleteList = page.locator('#delete-modal-list');
+        await expect(deleteModal).toBeVisible();
+        await expect(deleteModal.locator('#delete-modal-description')).toContainText(tempFileName);
+        await expect(deleteList).toBeVisible();
+        await expect(deleteList).toContainText(tempFileName);
+
+        await page.locator('#delete-confirm-btn').click();
+        await expect(deleteModal).toBeHidden();
+
+        await expect(tempFileRow).toHaveCount(0);
+        await expect.poll(() => fs.existsSync(tempFilePath)).toBe(false);
+
+        await page.reload();
+    });
+
+    test('should confirm bulk deletion with count summary when more than ten files selected', async ({page}) => {
+        const timestamp = Date.now();
+        const tempFileNames = Array.from({ length: 12 }, (_, index) => `bulk-delete-${timestamp}-${index}.txt`);
+        const tempFilePaths = tempFileNames.map(name => path.join(testDataDir, name));
+
+        tempFilePaths.forEach((filePath) => {
+            fs.writeFileSync(filePath, 'Temporary file used for bulk delete tests.');
+        });
+
+        await page.reload();
+        await page.waitForSelector('.file-row');
+
+        for (const name of tempFileNames) {
+            const row = page.locator('.file-row').filter({ hasText: name }).first();
+            await expect(row).toBeVisible();
+            await row.locator('.file-checkbox').check();
+        }
+
+        const lastRow = page.locator('.file-row').filter({ hasText: tempFileNames[tempFileNames.length - 1] }).first();
+        await lastRow.click({ button: 'right' });
+        await page.waitForSelector('#context-menu:not(.hidden)');
+        await page.locator('[data-action="delete"]').click();
+
+        const deleteModal = page.locator('#delete-modal');
+        const deleteList = page.locator('#delete-modal-list');
+        await expect(deleteModal).toBeVisible();
+        await expect(deleteModal.locator('#delete-modal-description')).toContainText(`${tempFileNames.length} items`);
+        await expect(deleteList).toBeHidden();
+
+        await page.locator('#delete-confirm-btn').click();
+        await expect(deleteModal).toBeHidden();
+
+        await expect.poll(() => tempFilePaths.every(filePath => !fs.existsSync(filePath))).toBe(true);
+
+        await page.reload();
     });
 });

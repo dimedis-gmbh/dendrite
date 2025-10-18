@@ -10,17 +10,27 @@ import (
 	"strings"
 )
 
-// readLastNLines reads the last N lines from a file efficiently
-func readLastNLines(filePath string, n int) ([]string, error) {
+func openLogFile(filePath string) (*os.File, error) {
 	file, err := os.Open(filePath) // #nosec G304 - filePath is validated by filesystem manager
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			log.Printf("Error closing file: %v", err)
-		}
-	}()
+	return file, nil
+}
+
+func closeLogFile(file *os.File) {
+	if err := file.Close(); err != nil {
+		log.Printf("Error closing file: %v", err)
+	}
+}
+
+// readLastNLines reads the last N lines from a file efficiently
+func readLastNLines(filePath string, n int) ([]string, error) {
+	file, err := openLogFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer closeLogFile(file)
 
 	// Get file size
 	stat, err := file.Stat()
@@ -141,15 +151,11 @@ func filterLines(lines []string, search string, caseSensitive bool, isRegex bool
 
 // readFilteredLastNLines reads the entire file, applies filters, then returns the last N lines
 func readFilteredLastNLines(filePath string, n int, search string, caseSensitive bool, isRegex bool) ([]string, error) {
-	file, err := os.Open(filePath) // #nosec G304 - filePath is validated by filesystem manager
+	file, err := openLogFile(filePath)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			log.Printf("Error closing file: %v", err)
-		}
-	}()
+	defer closeLogFile(file)
 
 	// Read all lines from the file
 	scanner := bufio.NewScanner(file)
@@ -183,7 +189,7 @@ type FileFollower struct {
 
 // NewFileFollower creates a new file follower
 func NewFileFollower(filePath string) (*FileFollower, error) {
-	file, err := os.Open(filePath) // #nosec G304 - filePath is validated by filesystem manager
+	file, err := openLogFile(filePath)
 	if err != nil {
 		return nil, err
 	}
@@ -191,9 +197,7 @@ func NewFileFollower(filePath string) (*FileFollower, error) {
 	// Seek to end of file
 	position, err := file.Seek(0, 2)
 	if err != nil {
-		if cerr := file.Close(); cerr != nil {
-			log.Printf("Error closing file: %v", cerr)
-		}
+		closeLogFile(file)
 		return nil, err
 	}
 
