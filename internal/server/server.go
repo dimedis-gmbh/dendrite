@@ -611,7 +611,10 @@ func (s *Server) putFileRaw(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) handleFileTransfer(w http.ResponseWriter, r *http.Request, status string, op func(*filesystem.Manager, string, string) error) {
+func (s *Server) handleFileTransfer(
+	w http.ResponseWriter,
+	r *http.Request, status string,
+	op func(*filesystem.Manager, string, string) error) {
 	vars := mux.Vars(r)
 	sourcePath := vars["path"]
 

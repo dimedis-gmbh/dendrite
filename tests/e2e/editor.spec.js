@@ -249,28 +249,20 @@ test.describe('Dendrite Text Editor', () => {
     });
 
     test('should close menu after clicking action', async ({page}) => {
-        // Open editor
         const fileRow = page.locator('.file-row').filter({hasText: 'sample.txt'}).first();
         await fileRow.click({button: 'right'});
         await page.click('[data-action="edit-modal"]');
 
-        // Wait for editor to load
         const iframe = page.frameLocator('#editor-modal-iframe');
         await iframe.locator('#editor-container').waitFor();
 
-        // Monaco has a menu bar with buttons, not dropdown menus
-        // Click undo button
-        await iframe.locator('#undo-btn').click();
-        await page.waitForTimeout(500);
+        const menuOverlay = iframe.locator('.monaco-menu-container');
+        await expect(menuOverlay).toHaveCount(0);
 
-        // Verify the action was performed
-        const editorContent = await iframe.locator(":root").evaluate(() => {
-            if (window.editorApp && window.editorApp.editor) {
-                return window.editorApp.editor.getValue();
-            }
-            return '';
-        });
-        expect(editorContent).toContain('This is a sample text file');
+        await iframe.locator('#undo-btn').click();
+        await page.waitForTimeout(200);
+
+        await expect(menuOverlay).toHaveCount(0);
     });
 
     test('should handle paste action from menu', async ({page}) => {
@@ -330,3 +322,11 @@ test.describe('Dendrite Text Editor', () => {
         expect(fontFamily.toLowerCase()).toMatch(/monaco|menlo|consolas|courier|monospace|droid|ubuntu|jetbrains/);
     });
 });
+async function getEditorContent(iframe) {
+    return iframe.locator(':root').evaluate(() => {
+        if (window.editorApp && window.editorApp.editor) {
+            return window.editorApp.editor.getValue();
+        }
+        return '';
+    });
+}

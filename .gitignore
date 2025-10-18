@@ -57,3 +57,4 @@ dendrite.toml
 tmp/**
 tests/e2e/test_data/
 report/**
+before-push.sh
