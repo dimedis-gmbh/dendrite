@@ -6,6 +6,8 @@ test.describe('Log Viewer Basic Tests', () => {
     const testDataDir = path.join(__dirname, 'test_data');
     const testLogFile = 'app.log';
     const testLogPath = path.join(testDataDir, testLogFile);
+    const logFileSelector = `.file-row[data-path="/${testLogFile}"]`;
+    const logFileRow = (page) => page.locator(logFileSelector);
     
     test.beforeAll(async () => {
         // Create a simple log file
@@ -31,7 +33,7 @@ test.describe('Log Viewer Basic Tests', () => {
         await page.waitForSelector('.file-row', { timeout: 10000 });
         
         // Find the log file
-        const fileRow = page.locator('.file-row').filter({ hasText: testLogFile });
+        const fileRow = logFileRow(page);
         await expect(fileRow).toBeVisible({ timeout: 10000 });
         
         // Right-click to open context menu
@@ -66,7 +68,7 @@ test.describe('Log Viewer Basic Tests', () => {
         await page.waitForSelector('.file-row', { timeout: 10000 });
         
         // Find the log file
-        const fileRow = page.locator('.file-row').filter({ hasText: testLogFile });
+        const fileRow = logFileRow(page);
         await expect(fileRow).toBeVisible({ timeout: 10000 });
         
         // Right-click
@@ -108,7 +110,7 @@ test.describe('Log Viewer Basic Tests', () => {
         await page.waitForSelector('.file-row', { timeout: 10000 });
         
         // Find the log file
-        const fileRow = page.locator('.file-row').filter({ hasText: testLogFile });
+        const fileRow = logFileRow(page);
         await expect(fileRow).toBeVisible({ timeout: 10000 });
         
         // Right-click
@@ -158,7 +160,7 @@ test.describe('Log Viewer Basic Tests', () => {
         await page.waitForSelector('.file-row', { timeout: 10000 });
         
         // Find the log file
-        const fileRow = page.locator('.file-row').filter({ hasText: testLogFile });
+        const fileRow = logFileRow(page);
         await expect(fileRow).toBeVisible({ timeout: 10000 });
         
         // Get the file path from data attribute
